@@ -1,0 +1,25 @@
+---
+- name: Install dnsmasq
+  ansible.builtin.apt:
+    name: dnsmasq
+    state: present
+    update_cache: true
+  become: true
+
+- name: Deploy dnsmasq lab config
+  ansible.builtin.template:
+    src: dnsmasq.lab.conf.j2
+    dest: /etc/dnsmasq.d/lab.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart dnsmasq
+
+- name: Ensure dnsmasq is enabled and running
+  ansible.builtin.service:
+    name: dnsmasq
+    state: started
+    enabled: true
+  become: true
+...

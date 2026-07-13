@@ -1,0 +1,74 @@
+- name: Install prerequisites on the host machine
+  hosts: localhost
+  become: true
+  tasks:
+    - name: Install dependencies
+      ansible.builtin.apt:
+        name:
+          - curl
+          - gnupg
+          - software-properties-common
+        state: present
+        update_cache: yes
+
+    - name: Check if Vagrant is installed
+      ansible.builtin.command: vagrant --version
+      register: vagrant_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check if VirtualBox is installed
+      ansible.builtin.command: vboxmanage --version
+      register: virtualbox_check
+      changed_when: false
+      failed_when: false
+
+    - name: Download HashiCorp key (ASCII)
+      ansible.builtin.get_url:
+        url: https://apt.releases.hashicorp.com/gpg
+        dest: /tmp/hashicorp.asc
+        mode: '0644'
+      when: vagrant_check.rc != 0
+
+    - name: Dearmor HashiCorp key into apt keyring
+      ansible.builtin.command:
+        cmd: gpg --dearmor --yes -o /usr/share/keyrings/hashicorp-archive-keyring.gpg /tmp/hashicorp.asc
+      # args:
+      #   creates: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      when: vagrant_check.rc != 0
+
+    - name: Add HashiCorp repository for Vagrant
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ ansible_architecture | replace('x86_64','amd64') | replace('aarch64','arm64') }} signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+        state: present
+        filename: hashicorp
+      when: vagrant_check.rc != 0
+
+    - name: Download VirtualBox key (ASCII)
+      ansible.builtin.get_url:
+        url: https://www.virtualbox.org/download/oracle_vbox_2016.asc
+        dest: /tmp/oracle-vbox.asc
+        mode: '0644'
+      when: virtualbox_check.rc != 0
+
+    - name: Dearmor VirtualBox key into apt keyring
+      ansible.builtin.command:
+        cmd: gpg --dearmor --yes -o /usr/share/keyrings/oracle-virtualbox-2016.gpg /tmp/oracle-vbox.asc
+      # args:
+      #   creates: /usr/share/keyrings/oracle-virtualbox-2016.gpg
+      when: virtualbox_check.rc != 0
+
+    - name: Add VirtualBox repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian {{ ansible_distribution_release }} contrib"
+        state: present
+        filename: virtualbox
+      when: virtualbox_check.rc != 0
+
+    - name: Install prerequisites if not present
+      ansible.builtin.apt:
+        name:
+          - vagrant
+          - virtualbox-7.0
+        state: present
+        update_cache: yes

@@ -1,0 +1,6 @@
+---
+- name: Configure DNS server
+  hosts: dns
+  roles:
+    - dnsmasq
+...

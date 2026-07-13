@@ -1,0 +1,18 @@
+---
+all:
+  children:
+    local:
+      hosts:
+        localhost:
+          ansible_connection: local
+    lab:
+      vars:
+        ansible_user: vagrant
+      children:
+        dns:
+          hosts:
+            dns01:
+              ansible_host: 192.168.56.2
+              dns_domain: lab.internal
+              ansible_ssh_private_key_file: .vagrant/machines/dns01/virtualbox/private_key
+...

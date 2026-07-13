@@ -1,0 +1,17 @@
+---
+dns_domain: lab.internal
+
+dns_listen_addresses:
+  - 127.0.0.1
+  - "{{ ansible_host }}"
+
+dns_upstream_servers:
+  - 1.1.1.1
+  - 8.8.8.8
+
+dns_records:
+  - name: "dns01"
+    ip: "192.168.56.2"
+  - name: "gitlab01"
+    ip: "192.168.56.101"
+...

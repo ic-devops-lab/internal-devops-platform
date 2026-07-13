@@ -1,0 +1,23 @@
+# Managed by Ansible
+
+domain={{ dns_domain }}
+local=/{{ dns_domain }}/
+expand-hosts
+
+{% for addr in dns_listen_addresses %}
+listen-address={{ addr }}
+{% endfor %}
+bind-interfaces
+
+{% for srv in dns_upstream_servers %}
+server={{ srv }}
+{% endfor %}
+
+no-resolv
+domain-needed
+# Note: bogus-priv may block reverse lookups for private IPs unless configured more carefully
+bogus-priv
+
+{% for rec in dns_records %}
+address=/{{ rec.name }}.{{ dns_domain }}/{{ rec.ip }}
+{% endfor %}
