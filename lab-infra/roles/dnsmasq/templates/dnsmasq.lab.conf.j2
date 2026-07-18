@@ -1,0 +1,59 @@
+# Managed by Ansible
+# Manual changes to this file will be overwritten.
+
+# The local domain associated with this server.
+domain={{ dns_domain }}
+
+# Queries for this domain must be answered locally.
+#
+# dnsmasq must not forward unresolved *.lab.internal queries
+# to public DNS resolvers.
+local=/{{ dns_domain }}/
+
+# Append the configured domain to simple hostnames obtained
+# from /etc/hosts or DHCP.
+#
+# This is not essential for our explicit host-record entries,
+# but is useful if we later manage local host information through dnsmasq.
+expand-hosts
+
+# Listen only on explicitly approved addresses.
+#
+# This avoids unintentionally opening DNS on every VM interface.
+{% for addr in dns_listen_addresses %}
+listen-address={{ addr }}
+{% endfor %}
+
+# Bind only to interfaces that contain the configured addresses.
+bind-interfaces
+
+
+# Do not read upstream DNS servers from /etc/resolv.conf.
+#
+# We define upstream resolvers explicitly below, which makes
+# the configuration deterministic and managed by Ansible.
+no-resolv
+
+# Forward non-local queries to the configured upstream resolvers.
+{% for srv in dns_upstream_servers %}
+server={{ srv }}
+{% endfor %}
+
+# Do not forward incomplete names such as "gitlab01" to public DNS.
+domain-needed
+
+# Do not forward reverse lookups for private IP ranges upstream.
+#
+# Reverse DNS is not part of the current lab. If reverse zones are
+# introduced later, this setting should be reviewed.
+bogus-priv
+
+# Define exact internal DNS host records.
+#
+# Use host-record for exact machines and address later for wildcard-like service domains.
+#
+# host-record is preferable here because these are individual hosts,
+# not wildcard domain mappings.
+{% for rec in dns_records %}
+host-record={{ rec.name }}.{{ dns_domain }},{{ rec.ip }}
+{% endfor %}

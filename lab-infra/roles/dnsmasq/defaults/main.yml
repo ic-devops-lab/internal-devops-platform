@@ -1,0 +1,65 @@
+---
+# Internal DNS domain managed by this dnsmasq instance.
+#
+# Hosts will be available under names such as:
+#   dns01.lab.internal
+#   gitlab01.lab.internal
+dns_domain: lab.internal
+
+# Addresses on which dnsmasq should accept DNS requests.
+#
+# 127.0.0.1 allows local tests from dns01 itself.
+# ansible_host is the private address from the Ansible inventory,
+# currently 192.168.56.2.
+#
+# 0.0.0.0 is not used intentionallybecause that would make
+# dnsmasq listen on every network interface, including the NAT interface.
+dns_listen_addresses:
+  - 127.0.0.1
+  - "{{ ansible_host }}"
+
+# Upstream resolvers used for domains not managed by this server.
+#
+# For example:
+#   gitlab01.lab.internal -> answered locally
+#   github.com             -> forwarded upstream
+#
+# These can later be replaced with the preferred provider or
+# the DNS resolver used by the host/network.
+dns_upstream_servers:
+  - 1.1.1.1
+  - 8.8.8.8
+
+# Exact internal host records managed by this DNS service.
+#
+# These entries will be rendered as dnsmasq host-record directives.
+dns_records:
+  - name: "dns01"
+    ip: "192.168.56.2"
+
+  # Service-level alias.
+  #
+  # dns01 identifies the concrete VM.
+  # dns identifies the DNS service.
+  #
+  # If we later introduce dns02, the generic dns.lab.internal name
+  # could be moved to another address without changing clients.
+  - name: dns
+    ip: "192.168.56.2"
+
+  - name: "gitlab01"
+    ip: "192.168.56.101"
+
+# Record used by Ansible to verify that dnsmasq actually returns
+# the expected internal response after configuration.
+dns_test_record:
+  name: dns01
+  ip: 192.168.56.2
+
+# Public domain used to verify that upstream forwarding works.
+#
+# We only check that the response is non-empty. We do not compare
+# against a fixed IP because public addresses can change.
+dns_external_test_domain: example.com
+
+...

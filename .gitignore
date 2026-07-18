@@ -1,0 +1,5 @@
+# local IDE and project files
+**.vagrant
+**tmp/
+**temp/
+**.code-workspace

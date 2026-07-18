@@ -1,0 +1,78 @@
+---
+- name: Install dnsmasq
+  ansible.builtin.apt:
+    name:
+      # The DNS forwarding and caching service.
+      - dnsmasq
+
+      # Provides dig and nslookup for automated and manual tests.
+      - dnsutils
+    state: present
+    update_cache: true
+  become: true
+
+- name: Deploy dnsmasq lab config
+  ansible.builtin.template:
+    src: dnsmasq.lab.conf.j2
+    dest: /etc/dnsmasq.d/lab.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  # Schedule a restart only when the generated configuration changes.
+  notify: Restart dnsmasq
+
+- name: Validate complete dnsmasq configuration
+  ansible.builtin.command:
+    cmd: dnsmasq --test
+  become: true
+  # the command only validates configuration and doesn't modify the system
+  changed_when: true
+  # If dnsmasq finds an invalid directive, Ansible stops here.
+  #
+  # The restart handler has not run yet, so the currently running DNS
+  # service remains available with its previous valid configuration.
+  #
+  # Note: the new file has already been written to disk. For a stronger
+  # rollback mechanism, we could later add block/rescue handling.
+  register: dnsmasq_config_test
+
+- name: Apply pending dnsmasq restart
+  ansible.builtin.meta: flush_handlers
+  # Normally handlers run at the end of the play.
+  #
+  # We run the restart now because the following tasks must test
+  # the newly deployed configuration rather than the old service state.
+
+- name: Ensure dnsmasq is enabled and running
+  ansible.builtin.service:
+    name: dnsmasq
+    state: started
+    enabled: true
+  become: true
+
+- name: Verify internal DNS reolution
+  ansible.builtin.command:
+    cmd: >-
+      dig +short @127.0.0.1 {{ dns_test_record.name }}.{{ dns_domain }}
+  register: dns_internal_test
+  changed_when: false
+  # The playbook fails unless dnsmasq returns the exact address
+  # expected for the internal test record.
+  failed_when:
+    - dns_internal_test.rc != 0
+    - dns_internal_test.stdout | trim != dns_test_record.ip
+
+- name: Verify external DNS forwarding
+  ansible.builtin.command:
+    cmd: >-
+      dig +short @127.0.0.1 {{ dns_external_test_domain }}
+  register: dns_external_test
+  changed_when: false
+  # External DNS answers can contain one or several addresses.
+  #
+  # We therefore only require a successful command and a non-empty result.
+  failed_when:
+    - dns_external_test.rc != 0
+    - dns_external_test.stdout | trim | length == 0
+...
