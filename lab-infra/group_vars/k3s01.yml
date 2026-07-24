@@ -1,0 +1,34 @@
+---
+# Pin the k3s version so that rebuilding the cluster is deterministic.
+#
+# Do not rely on whatever version happens to be latest at deployment time.
+k3s_version: "v1.35.4+k3s1"
+
+# Internal DNS server used by the VM operating systems.
+# uncomment if not set in group_vars/all.yml
+# lab_dns_server: 192.168.56.2
+# lab_dns_domain: lab.internal
+
+# The server address used by agents when joining the cluster.
+k3s01_server_ip: "192.168.56.11"
+k3s01_server_address: "https://{{ k3s01_server_ip }}:6443"
+
+# Location where the k3s server stores the node token.
+k3s01_server_token_file: /var/lib/rancher/k3s/server/node-token
+
+# Local kubeconfig path on the host machine.
+local_kubeconfig_path: "{{ playbook_dir }}/../artifacts/kubeconfig"
+
+# Common packages to install on all nodes.
+# Some packages, such as open-iscsi and nfs-common,
+# are not required for the base cluster but are commonly needed later for storage.
+k3s_common_packages:
+  - curl
+  - ca-certificates
+  - gnupg
+  - jq
+  - open-iscsi
+  - nfs-common
+
+k3s_flannel_iface: "enp0s8"
+...

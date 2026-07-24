@@ -2,9 +2,20 @@
   hosts: localhost
   become: true
   tasks:
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Repair broken apt state if needed
+      ansible.builtin.apt:
+        state: fixed
+      when: ansible_facts.packages is defined
+
     - name: Install dependencies
       ansible.builtin.apt:
         name:
+          - apt-transport-https
+          - ca-certificates
           - curl
           - gnupg
           - software-properties-common
@@ -17,58 +28,123 @@
       changed_when: false
       failed_when: false
 
-    - name: Check if VirtualBox is installed
-      ansible.builtin.command: vboxmanage --version
-      register: virtualbox_check
+    - name: Install Vagrant block
+      when: vagrant_check.rc != 0
+      become: true
+      block:
+        - name: Download HashiCorp key (ASCII)
+          ansible.builtin.get_url:
+            url: https://apt.releases.hashicorp.com/gpg
+            dest: /tmp/hashicorp.asc
+            mode: '0644'
+
+        - name: Dearmor HashiCorp key into apt keyring
+          ansible.builtin.command:
+            cmd: gpg --dearmor --yes -o /usr/share/keyrings/hashicorp-archive-keyring.gpg /tmp/hashicorp.asc
+
+        - name: Add HashiCorp repository for Vagrant
+          ansible.builtin.apt_repository:
+            repo: "deb [arch={{ ansible_architecture | replace('x86_64','amd64') | replace('aarch64','arm64') }} signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+            state: present
+            filename: hashicorp
+
+        - name: Install vagrant
+          ansible.builtin.apt:
+            name: vagrant
+            state: present
+            update_cache: yes
+
+    # - name: Check if VirtualBox is installed
+    #   ansible.builtin.command: vboxmanage --version
+    #   register: virtualbox_check
+    #   changed_when: false
+    #   failed_when: false
+
+    - name: Install VirtualBox block
+      # when: virtualbox_check.rc != 0
+      when: "'virtualbox-7.0' not in ansible_facts.packages"
+      become: true
+      block:
+        - name: Download VirtualBox key (ASCII)
+          ansible.builtin.get_url:
+            url: https://www.virtualbox.org/download/oracle_vbox_2016.asc
+            dest: /tmp/oracle-vbox.asc
+            mode: '0644'
+
+        - name: Dearmor VirtualBox key into apt keyring
+          ansible.builtin.command:
+            cmd: gpg --dearmor --yes -o /usr/share/keyrings/oracle-virtualbox-2016.gpg /tmp/oracle-vbox.asc
+          # args:
+          #   creates: /usr/share/keyrings/oracle-virtualbox-2016.gpg
+
+        - name: Add VirtualBox repository
+          ansible.builtin.apt_repository:
+            repo: "deb [signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian {{ ansible_distribution_release }} contrib"
+            state: present
+            filename: virtualbox
+
+        # no VirtualBox services should be running when installing VirtualBox, otherwise the installation will fail with a DKMS error.
+        # all VMs should be stopped and all VirtualBox clients should be closed before running this playbook.
+        - name: Check VBox background services
+          ansible.builtin.command: pidof VBoxSVC VBoxXPCOMIPCD
+          register: vbox_runtime_check
+          changed_when: false
+          failed_when: false
+          when: "'virtualbox-7.0' not in ansible_facts.packages"
+
+        - name: Stop and rerun if VBox services are active
+          ansible.builtin.fail:
+            msg: >
+              VirtualBox services are running (VBoxSVC/VBoxXPCOMIPCD).
+              Stop all VMs and close VirtualBox clients, then rerun this playbook.
+          when:
+            - "'virtualbox-7.0' not in ansible_facts.packages"
+            - vbox_runtime_check.rc == 0
+
+        - name: Purge conflicting VirtualBox packages
+          ansible.builtin.apt:
+            name:
+              - virtualbox
+              - virtualbox-dkms
+              - virtualbox-qt
+            state: absent
+            purge: true
+            autoremove: true
+
+        - name: Install VirtualBox
+          ansible.builtin.apt:
+            name: virtualbox-7.0
+            state: present
+            update_cache: yes
+
+    - name: Check if kubectl is installed
+      ansible.builtin.command: kubectl version --client
+      register: kubectl_check
       changed_when: false
       failed_when: false
 
-    - name: Download HashiCorp key (ASCII)
-      ansible.builtin.get_url:
-        url: https://apt.releases.hashicorp.com/gpg
-        dest: /tmp/hashicorp.asc
-        mode: '0644'
-      when: vagrant_check.rc != 0
+    - name: Install kubectl block
+      when: kubectl_check.rc != 0
+      become: true
+      block:
+        - name: Download Kubernetes API public signing key
+          ansible.builtin.get_url:
+            url: https://pkgs.k8s.io/core:/stable:/{{ kubectl_version }}/deb/Release.key
+            dest: /tmp/kubernetes-release.key
+            mode: '0644'
 
-    - name: Dearmor HashiCorp key into apt keyring
-      ansible.builtin.command:
-        cmd: gpg --dearmor --yes -o /usr/share/keyrings/hashicorp-archive-keyring.gpg /tmp/hashicorp.asc
-      # args:
-      #   creates: /usr/share/keyrings/hashicorp-archive-keyring.gpg
-      when: vagrant_check.rc != 0
+        - name: Dearmor Kubernetes public key to shared keyring
+          ansible.builtin.command:
+            cmd: gpg --dearmor --yes -o /usr/share/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes-release.key
 
-    - name: Add HashiCorp repository for Vagrant
-      ansible.builtin.apt_repository:
-        repo: "deb [arch={{ ansible_architecture | replace('x86_64','amd64') | replace('aarch64','arm64') }} signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
-        state: present
-        filename: hashicorp
-      when: vagrant_check.rc != 0
+        - name: Add Kubernetes repository
+          ansible.builtin.apt_repository:
+            repo: "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ kubectl_version }}/deb/ /"
+            state: present
+            filename: kubernetes
 
-    - name: Download VirtualBox key (ASCII)
-      ansible.builtin.get_url:
-        url: https://www.virtualbox.org/download/oracle_vbox_2016.asc
-        dest: /tmp/oracle-vbox.asc
-        mode: '0644'
-      when: virtualbox_check.rc != 0
-
-    - name: Dearmor VirtualBox key into apt keyring
-      ansible.builtin.command:
-        cmd: gpg --dearmor --yes -o /usr/share/keyrings/oracle-virtualbox-2016.gpg /tmp/oracle-vbox.asc
-      # args:
-      #   creates: /usr/share/keyrings/oracle-virtualbox-2016.gpg
-      when: virtualbox_check.rc != 0
-
-    - name: Add VirtualBox repository
-      ansible.builtin.apt_repository:
-        repo: "deb [signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian {{ ansible_distribution_release }} contrib"
-        state: present
-        filename: virtualbox
-      when: virtualbox_check.rc != 0
-
-    - name: Install prerequisites if not present
-      ansible.builtin.apt:
-        name:
-          - vagrant
-          - virtualbox-7.0
-        state: present
-        update_cache: yes
+        - name: Install kubectl
+          ansible.builtin.apt:
+            name: kubectl
+            state: present
+            update_cache: yes

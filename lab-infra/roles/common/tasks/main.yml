@@ -1,0 +1,90 @@
+---
+- name: Install common packages
+  ansible.builtin.apt:
+    update_cache: yes
+    name: "{{ common_packages }}"  # from group_vars/all.yml
+    state: present
+  become: true
+
+- name: Detect /etc/resolv.conf symlink target
+  ansible.builtin.command:
+    cmd: readlink -f /etc/resolv.conf
+  register: resolv_conf_target
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Check whether systemd-resolved is active
+  ansible.builtin.command:
+    cmd: systemctl is-active systemd-resolved
+  register: systemd_resolved
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Set resolver mode
+  ansible.builtin.set_fact:
+    resolver_mode: >-
+      {{
+        'systemd-resolved'
+        if systemd_resolved.rc == 0 and systemd_resolved.stdout | trim == 'active'
+        else 'static'
+      }}
+
+- name: Configure DNS resolver for systemd-resolved
+  when: resolver_mode == 'systemd-resolved'
+  become: true
+  block:
+    - name: Ensure resolved drop-in directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Deploy resolved drop-in configuration
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf.d/lab-dns.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Resolve]
+          DNS={{ lab_dns_server }}  # from group_vars/all.yml
+          Domains={{ lab_dns_domain }}  # from group_vars/all.yml
+
+    - name: Restart systemd-resolved
+      ansible.builtin.service:
+        name: systemd-resolved
+        state: restarted
+
+- name: Configure static resolver fallback
+  when: resolver_mode == 'static'
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      search {{ lab_dns_domain }} # from group_vars/all.yml
+      nameserver {{ lab_dns_server }} # from group_vars/all.yml
+
+- name: Verify DNS resolution
+  become: true
+  block:
+    - name: Resolve dns01.lab.internal
+      ansible.builtin.command:
+        cmd: getent hosts dns01.lab.internal
+      register: dns01_lookup
+      changed_when: false
+      failed_when: dns01_lookup.rc != 0 or dns01_lookup.stdout | trim | length == 0
+
+    - name: Resolve k3s01-ctrl01.lab.internal
+      ansible.builtin.command:
+        cmd: getent hosts k3s01-ctrl01.lab.internal
+      register: k3s01_ctrl01_lookup
+      changed_when: false
+      failed_when: k3s01_ctrl01_lookup.rc != 0 or k3s01_ctrl01_lookup.stdout | trim | length == 0
+...

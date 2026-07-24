@@ -1,0 +1,29 @@
+---
+- name: Check if k3s agent is already installed
+  ansible.builtin.stat:
+    path: /etc/systemd/system/k3s-agent.service
+  register: k3s_agent_service
+
+- name: Wait until control-plane API is available
+  ansible.builtin.wait_for:
+    host: "{{ k3s01_server_ip }}"
+    port: 6443
+    timeout: 120
+
+- name: Install k3s agent
+  ansible.builtin.shell: |
+    set -e
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      K3S_URL="https://{{ k3s01_server_ip }}:6443" \
+      K3S_TOKEN="{{ hostvars['k3s01-ctrl01']['k3s_token']}}" \
+      INSTALL_K3S_EXEC="agent \
+        --node-name={{ inventory_hostname }} \
+        --flannel-iface={{ k3s_flannel_iface }} \
+        --kubelet-arg=node-ip={{ ansible_host }}" \
+      sh -
+  args:
+    executable: /bin/bash
+  become: true
+  when: not k3s_agent_service.stat.exists
+...

@@ -1,0 +1,138 @@
+---
+- name: Prepare nodes for k3s cluster
+  hosts: k3s01
+  roles:
+    - common
+    - k3s_common
+
+- name: Install k3s server
+  hosts: k3s01_servers
+  roles:
+    - k3s_server
+
+- name: Install k3s agents
+  hosts: k3s01_agents
+  become: true
+  roles:
+    - k3s_agent
+
+- name: Validate k3s cluster
+  hosts: k3s01_servers
+  become: true
+  run_once: true
+  vars:
+    worker_count: "{{ groups['k3s01_agents'] | default([]) | length }}"
+  tasks:
+    - name: Node readiness check
+      block:
+        - name: Wait for all nodes to be ready
+          ansible.builtin.command:
+            cmd: k3s kubectl wait node --all --for=condition=Ready --timeout=180s
+          changed_when: false
+
+        - name: Show cluster nodes
+          ansible.builtin.command:
+            cmd: k3s kubectl get nodes -o wide
+          register: k3s_nodes
+          changed_when: false
+
+        - name: Display cluster nodes
+          ansible.builtin.debug:
+            var: k3s_nodes.stdout_lines
+
+    - name: Pods readiness check
+      block:
+        - name: Wait for all kube-system pods to be ready
+          ansible.builtin.command:
+            cmd: k3s kubectl wait pod -n kube-system --all --field-selector=status.phase!=Succeeded --for=condition=Ready --timeout=180s
+          changed_when: false
+
+        - name: Show kube-system pods
+          ansible.builtin.command:
+            cmd: k3s kubectl get pods -n kube-system -o wide
+          register: kube_system_pods
+          changed_when: false
+
+        - name: Display kube-system pods
+          ansible.builtin.debug:
+            var: kube_system_pods.stdout_lines
+
+    - name: CLuster DNS validation
+      block:
+        - name: Create temporary dns-test pod
+          ansible.builtin.command:
+            cmd: k3s kubectl run dns-test --image=busybox --restart=Never --command -- sleep 300
+          changed_when: true
+
+        - name: Wait for dns-test pod to be ready
+          ansible.builtin.command:
+            cmd: k3s kubectl wait pod dns-test --for=condition=Ready
+          changed_when: false
+
+        - name: Test DNS reolution inside the cluster
+          ansible.builtin.command:
+            cmd: k3s kubectl exec dns-test -- nslookup kubernetes.default.svc.cluster.local
+          register: dns_lookup
+          changed_when: false
+
+        - name: Display DNS lookup output
+          ansible.builtin.debug:
+            var: dns_lookup.stdout_lines
+
+      always:
+        - name: Remove dns-test pod
+          ansible.builtin.command:
+            cmd: k3s kubectl delete pod dns-test
+          changed_when: false
+
+    - name: Inter-node scheduling validation
+      block:
+        - name: Cleanup stale nginx-test deployment if present
+          ansible.builtin.command:
+            cmd: k3s kubectl delete deployment nginx-test --ignore-not-found
+          changed_when: false
+
+        - name: Create nginx-test deployment
+          ansible.builtin.command:
+            cmd: k3s kubectl create deployment nginx-test --image=nginx
+          changed_when: true
+
+        - name: Scale nginx-test deployment to 3 replicas
+          ansible.builtin.command:
+            cmd: k3s kubectl scale deployment nginx-test --replicas=3
+          changed_when: true
+
+        - name: Wait for nginx-test rollout
+          ansible.builtin.command:
+            cmd: k3s kubectl rollout status deployment nginx-test --timeout=180s
+          changed_when: false
+
+        - name: Show nginx-test pods
+          ansible.builtin.command:
+            cmd: k3s kubectl get pods -l app=nginx-test -o wide
+          register: nginx_test_pods
+          changed_when: false
+
+        - name: Display nginx-test pods
+          ansible.builtin.debug:
+            var: nginx_test_pods.stdout_lines
+
+        - name: Collect scheduled node names
+          ansible.builtin.command:
+            # cmd: k3s kubectl get pods -l app=nginx-test -o jsonpath="{range .items[*].spec.nodeName}{'\\n'}{end}"
+            cmd: k3s kubectl get pods -l app=nginx-test -o custom-columns=NODE:.spec.nodeName --no-headers
+          register: scheduled_nodes
+          changed_when: false
+
+        - name: Assert pod spread across workers when possible
+          ansible.builtin.assert:
+            that:
+              - "(scheduled_nodes.stdout_lines | reject('equalto', '') | unique | list | length) >= (2 if worker_count|int > 1 else 1)"
+            fail_msg: "nginx-test pods ({{ scheduled_nodes.stdout_lines | reject('equalto', '') | unique | list | length }}) were not spread across enough nodes."
+            success_msg: "nginx-test pods ({{ scheduled_nodes.stdout_lines | reject('equalto', '') | unique | list | length }}) are distributed across nodes as expected."
+      always:
+        - name: Remove nginx-test deployment
+          ansible.builtin.command:
+            cmd: k3s kubectl delete deployment nginx-test --ignore-not-found
+          changed_when: false
+...

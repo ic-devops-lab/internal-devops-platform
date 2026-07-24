@@ -1,0 +1,78 @@
+---
+- name: Check if k3s server is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Install k3s server
+  ansible.builtin.shell: |
+    set -e
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      INSTALL_K3S_EXEC="server \
+        --node-name={{ inventory_hostname }} \
+        --node-ip={{ ansible_host }} \
+        --advertise-address={{ ansible_host }} \
+        --flannel-iface={{ k3s_flannel_iface }} \
+        --tls-san={{ ansible_host }} \
+        --tls-san={{ inventory_hostname }}.{{ lab_dns_domain }} \
+        --write-kubeconfig-mode=0644" \
+      sh -
+  args:
+    executable: /bin/bash
+  become: true
+  when: not k3s_binary.stat.exists
+
+- name: Wait for k3s server API
+  ansible.builtin.wait_for:
+    host: "{{ inventory_hostname }}.{{ lab_dns_domain }}"
+    port: 6443
+    delay: 10
+    timeout: 120
+
+- name: Read k3s node token
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_token_raw
+  become: true
+  # don't print token in Ansible output
+  no_log: true
+
+- name: Store k3s node token as fact
+  ansible.builtin.set_fact:
+    k3s_token: "{{ k3s_token_raw.content | b64decode | trim }}"
+  no_log: true
+
+- name: Ensure kubeconfig dir exists for vagrant user
+  ansible.builtin.file:
+    path: /home/vagrant/.kube
+    state: directory
+    owner: vagrant
+    group: vagrant
+    mode: '0700'
+  become: true
+
+- name: Copy k3s kubeconfig for vagrant user
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /home/vagrant/.kube/config
+    remote_src: true
+    owner: vagrant
+    group: vagrant
+    mode: '0600'
+  become: true
+
+- name: Replace localhost in kubeconfig with k3s server address
+  ansible.builtin.replace:
+    path: /home/vagrant/.kube/config
+    regexp: "127.0.0.1"
+    replace: "{{ ansible_host }}"
+  become: true
+
+- name: Fetch kubeconfig to local machine
+  ansible.builtin.fetch:
+    src: /home/vagrant/.kube/config
+    dest: "{{ local_kubeconfig_path }}"
+    flat: true
+  become: true
+...

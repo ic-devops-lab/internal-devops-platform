@@ -1,0 +1,20 @@
+common_packages:
+  - ca-certificates
+  - curl
+  - vim
+  - htop
+  - net-tools
+  - dnsutils
+  - tcpdump
+  - netcat-openbsd
+  - jq
+  - tree
+  - unzip
+  - gnupg
+  - lsb-release
+  - wget
+
+kubectl_version: "v1.35"
+
+lab_dns_server: 192.168.56.2
+lab_dns_domain: lab.internal

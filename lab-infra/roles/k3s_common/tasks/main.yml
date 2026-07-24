@@ -1,0 +1,22 @@
+---
+- name: Install common packages
+  ansible.builtin.apt:
+    update_cache: yes
+    name: "{{ k3s_common_packages }}"  # from group_vars/k3s01.yml
+    state: present
+  become: yes
+
+# Kubernetes nodes should not depend on active swap unless explicitly configured for it.
+- name: Disable swap immediately
+  ansible.builtin.command:
+    cmd: swapoff -a
+  changed_when: false
+  become: yes
+
+- name: Disable swap permanently
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s+.*)$'
+    replace: '# \1'
+  become: yes
+...

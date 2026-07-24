@@ -1,6 +1,7 @@
 Vagrant.configure("2") do |config|
   box_name_debian = "debian/bookworm64" # Debian 12
   # box_name_debian = "debian/bullseye64" # Debian 11
+  box_name_ubuntu = "ubuntu/jammy64" # Ubuntu 22.04
 
   nodes = {
     "dns01" => {
@@ -19,6 +20,30 @@ Vagrant.configure("2") do |config|
     #   disksize: 20,
     #   group: "admin",
     # },
+    "k3s01-ctrl01" => {
+      ip: "192.168.56.11",
+      box_name: box_name_ubuntu,
+      cpus: 2,
+      memory: 4096,
+      disksize: 20, # if not enough, increase to 40
+      group: "k3s01-servers",
+    },
+    "k3s01-wrk01" => {
+      ip: "192.168.56.12",
+      box_name: box_name_ubuntu,
+      cpus: 1, # if not enough, increase to 2
+      memory: 2048,
+      disksize: 20, # if not enough, increase to 40
+      group: "k3s01-agents",
+    },
+    "k3s01-wrk02" => {
+      ip: "192.168.56.13",
+      box_name: box_name_ubuntu,
+      cpus: 1, # if not enough, increase to 2
+      memory: 2048,
+      disksize: 20, # if not enough, increase to 40
+      group: "k3s01-agents",
+    },
   }
 
   nodes.each do |name, cfg|

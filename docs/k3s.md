@@ -1,0 +1,145 @@
+# K3S setup guide
+
+## IaC Changes
+
+- Updates and refactoring in the palybook deploying prerequisites to the host; see [`playbooks/host-prerequisites.yml](../lab-infra/playbooks/host-prerequisites.yml).
+
+- 3 new VMs added to [`lab-infra/Vagrantfile`](../lab-infra/Vagrantfile) for cluster nodes: 1 server and 2 agents.
+
+- Cluster VMs added to Ansible inventory; see [`lab-infra/inventory.yml`](../lab-infra/inventory.yml).
+
+- DNS configuration updated; see [`lab-infra/group_vars/dns.yml`](../lab-infra/group_vars/dns.yml)
+
+- File with variables for k3s cluster created; see [`lab-infra/group_vars/k3s01.yml`](../lab-infra/group_vars/k3s01.yml)
+
+- A role for preparing all VMs added: see [`roles/common/tasks/main.yml`](../lab-infra/roles/common/tasks/main.yml)
+
+  **Role responsibilities:**
+  - update the APT cache;
+  - install basic packages
+  - configure DNS resolver
+
+- A role for preparing cluster nodes created; see [`roles/k3s-common/tasks/main.yml`](../lab-infra/roles/k3s_common/tasks/main.yml)
+
+  **Role responsibilities:**
+  - update the APT cache;
+  - install basic packages specific for k3s nodes;
+  - disable swap;
+  - [not implemented yet] load required kernel modules;
+  - [not implemented yet] configure sysctl settings;
+  - configure DNS;
+  - [not implemented yet] ensure time synchronization;
+  - [not implemented yet] configure hostnames if necessary.
+
+- A role for configuring a controle-palne node added: see [`roles/k3s-server/tasks/main.yml`](../lab-infra/roles/k3s_server/tasks/main.yml)
+
+  **Role responsibilities:**
+  - download the official k3s installer;
+  - install the pinned k3s version;
+  - bind the Kubernetes API to the private address;
+  - configure node name and node IP;
+  - wait for the API server;
+  - retrieve the node token;
+  - retrieve kubeconfig;
+  - validate the server node.
+
+- A role for configuring a worker node added; see [`roles/k3s-agent/tasks/main.yml`](../lab-infra/roles/k3s_agent/tasks/main.yml)
+
+  **Role responsibilities:**
+  - ensure the k3s server is reachable;
+  - retrieve the cluster token from Ansible facts;
+  - install the pinned k3s agent version;
+  - configure node name and node IP;
+  - wait until the node joins;
+  - verify the agent service.
+
+- A playbook for deploying k3s cluster added; see [`playbooks/k3s.yml`](../lab-infra/playbooks/k3s.yml)
+
+---
+
+## Infrustructure setup/update
+
+On the host
+```bash
+cd lab-infra
+
+# update host's prerequisites (new were added)
+ansible-playbook playbooks/host-prerequisites.yml
+
+# deploy VMs
+vagrant up k3s01-ctrl01 k3s01-wrk01 k3s01-wrk02
+
+# check connectivity
+ansible k3s01 -m ping -o
+
+ansible k3s01_servers -m ping -o
+ansible k3s01_agents -m ping -o
+
+ansible k3s01-ctrl01 -m ping -o
+ansible k3s01-wrk01 -m ping -o
+ansible k3s01-wrk02 -m ping -o
+
+# run DNS playbook to update DNS records
+ansible playbook playbooks/dns.yml
+
+# validate
+dig +short @192.168.56.2 k3s01-ctrl01
+dig +short @192.168.56.2 k3s01-wrk01
+dig +short @192.168.56.2 k3s01-wrk02
+
+# deploy k3s
+ansible-playbook playbooks/k3s.yml
+
+# verify the cluster is up and has control-plane and worker nodes
+vagrant ssh k3s01-ctrl01 -c "kubectl get nodes -o wide"
+
+# add or update KUBECONFIG on the host
+grep -q '^KUBECONFIG=' .env 2>/dev/null \
+  && sed -i 's|^KUBECONFIG=.*|KUBECONFIG="$PWD/artifacts/kubeconfig"|' .env \
+  || echo 'KUBECONFIG="$PWD/artifacts/kubeconfig"' >> .env
+source .env
+# verify connection to k3s from the host
+kubectl get nodes -o wide
+```
+
+---
+
+## Possible improvements
+
+### k3s-common role
+
+#### Configure kernel modules
+
+1. Create `roles/k3s-common/templates/k3s-modules.conf.j2` with the content:
+```
+overlay
+br_netfilter
+```
+
+2. Deploy to: `/etc/modules-load.d/k3s.conf`
+
+3. Then load them:
+```
+modprobe overlay
+modprobe br_netfilter
+```
+
+---
+
+#### Configure sysctl
+
+1. Create `roles/k3s-common/templates/k3s-sysctl.conf.j2` with the content:
+```
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward = 1
+```
+
+2. Deploy to `/etc/sysctl.d/99-k3s.conf`
+
+3. Apply:
+```
+sysctl --system
+```
+
+---

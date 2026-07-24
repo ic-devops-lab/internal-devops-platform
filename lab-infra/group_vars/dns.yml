@@ -1,0 +1,18 @@
+dns_records:
+  - name: dns01
+    ip: 192.168.56.2
+
+  - name: dns
+    ip: 192.168.56.2
+
+  - name: gitlab01
+    ip: 192.168.56.101
+
+  - name: k3s01-ctrl01
+    ip: 192.168.56.11
+
+  - name: k3s01-wrk01
+    ip: 192.168.56.12
+
+  - name: k3s01-wrk02
+    ip: 192.168.56.13

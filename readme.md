@@ -79,7 +79,7 @@ ansible-playbook playbooks/dns.yml
 
 ### Internal DNS Service
 
-**A problem**: once your project has grown to the point where you're starting to add and remove services, scale them, replicate or move between the hosts, it becomes difficult to manage and maintain your services using just IP addresses.
+**Promlem to solve**: once your project has grown to the point where you're starting to add and remove services, scale them, replicate or move between the hosts, it becomes difficult to manage and maintain your services using just IP addresses.
 
 And this is where an internal DNS could be an essensial component of your infrastructure.
 
@@ -90,5 +90,23 @@ And this is where an internal DNS could be an essensial component of your infras
 - *centralized routing configuration*: we keep our map of relations between domain names and network addresses in a single place.
 
 See [the step-by-step guide for deploying the DNS service](./docs/dns.md).
+
+---
+
+### K3S Cluster
+
+**Promlem to solve**
+
+**Benefits**
+
+**Implementation steps**
+- adding 3 VMs for k3s cluster nodes to Vagrantfile
+- adding new VMs to Ansible inventory
+- updating list of hosts in DNS configuration
+- creating Ansible roles for the k3s cluster
+  - k3s-common
+  - k3s-server
+  - k3s-agent
+- creating an Ansible playbook for automated deployment of the cluster
 
 ---
