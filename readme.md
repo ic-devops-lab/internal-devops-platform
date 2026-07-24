@@ -39,6 +39,9 @@ ansible-playbook playbooks/host-prerequisites.yml
 
 ## Project architecture
 
+Current architecture:
+![Current project architecture](./docs/img/internal-dev-platform-04.png)
+
 - Host runs Vagrant + Ansible.
 - DNS node serves lab.internal records.
   - DNS is a dependency for stable service naming.
