@@ -51,7 +51,7 @@
     enabled: true
   become: true
 
-- name: Verify internal DNS reolution
+- name: Verify internal DNS resolution
   ansible.builtin.command:
     cmd: >-
       dig +short @127.0.0.1 {{ dns_test_record.name }}.{{ dns_domain }}

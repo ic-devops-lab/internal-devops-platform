@@ -37,6 +37,32 @@ ansible-playbook playbooks/host-prerequisites.yml
 
 ---
 
+## Project architecture
+
+- Host runs Vagrant + Ansible.
+- DNS node serves lab.internal records.
+  - DNS is a dependency for stable service naming.
+- K3S control-plane and workers on private network.
+  - Host kubectl accesses cluster via fetched kubeconfig artifact.
+
+**Node addresses and roles**
+| Host         | IP address     | Service role             |
+| ------------ | -------------- | ------------------------ |
+| dns01        | 192.168.56.2   | Internal DNS             |
+| k3s01-ctrl01 | 192.168.56.11  | K3S server/control-plane |
+| k3s01-wrk01  | 192.168.56.12  | K3S worker               |
+| k3s01-wrk02  | 192.168.56.13  | K3S worker               |
+
+**Ansible groups**:
+- local
+- lab
+  - dns
+  - k3s01
+    - k3s01_servers
+    - k3s01_agents
+
+---
+
 ## Infrastructure setup
 
 On the host:
@@ -71,6 +97,7 @@ ansible-playbook playbooks/dns.yml
 | OpenVPN   |          |          | ext.repo     | [Securing a Remote Linux Host with firewalld and OpenVPN](https://github.com/ic-devops-lab/devops-labs/tree/main/ProtectRemoteHostWithFirewallAndVPN) |
 | GitLab SE |          |          | ext.repo     | 1. [GitLab SE behind Cloudflare Zero Trust](https://github.com/ic-devops-lab/devops-labs/blob/main/GitLabSE-behind-CloudFlare/readme.md) 2. [GitLab SE behind Cloudflare Zero Trust: Part 2. Introducing the Tunnels](https://github.com/ic-devops-lab/devops-labs/blob/main/GitLabSEBehindCloudflare02Tunnels/readme.md) |
 | DNS       |  dns.md  | dns.yml  | in this repo | [030-dns-service](https://github.com/ic-devops-lab/internal-devops-platform/tree/030-dns-service) |
+| K3S       | k3s.md   | k3s.yml  | in this repo | [040-k3s-cluster] (https://github.com/ic-devops-lab/internal-devops-platform/tree/040-k3s-cluster) |
 |           |          |          |              |                        |
 
 ---
@@ -81,7 +108,7 @@ ansible-playbook playbooks/dns.yml
 
 **Promlem to solve**: once your project has grown to the point where you're starting to add and remove services, scale them, replicate or move between the hosts, it becomes difficult to manage and maintain your services using just IP addresses.
 
-And this is where an internal DNS could be an essensial component of your infrastructure.
+And this is where an internal DNS could be an essential component of your infrastructure.
 
 **Benefits**:
 - *meaningful service names instead of IP addresses*: administrators and automation tools can reference services such as `gitlab01.lab.internal`, `grafana.lab.internal`, rather than memorizing internal IP addresses;
@@ -95,7 +122,7 @@ See [the step-by-step guide for deploying the DNS service](./docs/dns.md).
 
 ### K3S Cluster
 
-**Promlem to solve**
+**Probmlem to solve**
 
 **Benefits**
 
@@ -108,5 +135,6 @@ See [the step-by-step guide for deploying the DNS service](./docs/dns.md).
   - k3s-server
   - k3s-agent
 - creating an Ansible playbook for automated deployment of the cluster
+- creating a playbook for uninstalling cluster agent ans servers
 
 ---

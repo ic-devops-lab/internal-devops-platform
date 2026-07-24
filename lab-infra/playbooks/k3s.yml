@@ -69,7 +69,7 @@
             cmd: k3s kubectl wait pod dns-test --for=condition=Ready
           changed_when: false
 
-        - name: Test DNS reolution inside the cluster
+        - name: Test DNS resolution inside the cluster
           ansible.builtin.command:
             cmd: k3s kubectl exec dns-test -- nslookup kubernetes.default.svc.cluster.local
           register: dns_lookup

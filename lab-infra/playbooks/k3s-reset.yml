@@ -1,0 +1,109 @@
+---
+- name: Reset k3s agents
+  hosts: k3s01_agents
+  become: true
+  tasks:
+    - name: Check for k3s agent uninstall script
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s-agent-uninstall.sh
+      register: k3s_agent_uninstall
+
+    - name: Install fallback k3s agent uninstall script when missing
+      ansible.builtin.copy:
+        dest: /usr/local/bin/k3s-agent-uninstall.sh
+        mode: '0755'
+        owner: root
+        group: root
+        content: |
+          #!/bin/sh
+          set -e
+
+          if [ -x /usr/local/bin/k3s-killall.sh ]; then
+            /usr/local/bin/k3s-killall.sh
+          fi
+
+          if command -v systemctl >/dev/null 2>&1; then
+            systemctl disable k3s-agent >/dev/null 2>&1 || true
+            systemctl stop k3s-agent >/dev/null 2>&1 || true
+            systemctl reset-failed k3s-agent >/dev/null 2>&1 || true
+          fi
+
+          rm -f /etc/systemd/system/k3s-agent.service
+          rm -f /etc/systemd/system/k3s-agent.service.env
+          rm -f /usr/local/bin/k3s-agent-uninstall.sh
+          rm -f /usr/local/bin/k3s
+          rm -rf /etc/rancher/k3s
+          rm -rf /var/lib/rancher/k3s
+          rm -rf /var/lib/kubelet
+          rm -rf /etc/cni
+      when: not k3s_agent_uninstall.stat.exists
+
+    - name: Uninstall k3s agent
+      ansible.builtin.command:
+        cmd: /usr/local/bin/k3s-agent-uninstall.sh
+
+    - name: Remove leftover k3s agent paths
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher/k3s
+        - /var/lib/rancher/k3s
+        - /var/lib/kubelet
+        - /etc/cni
+        - /run/k3s
+
+- name: Reset k3s server
+  hosts: k3s01_servers
+  become: true
+  tasks:
+    - name: Check for k3s server uninstall script
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s-uninstall.sh
+      register: k3s_server_uninstall
+
+    - name: Install fallback k3s server uninstall script when missing
+      ansible.builtin.copy:
+        dest: /usr/local/bin/k3s-uninstall.sh
+        mode: '0755'
+        owner: root
+        group: root
+        content: |
+          #!/bin/sh
+          set -e
+
+          if [ -x /usr/local/bin/k3s-killall.sh ]; then
+            /usr/local/bin/k3s-killall.sh
+          fi
+
+          if command -v systemctl >/dev/null 2>&1; then
+            systemctl disable k3s >/dev/null 2>&1 || true
+            systemctl stop k3s >/dev/null 2>&1 || true
+            systemctl reset-failed k3s >/dev/null 2>&1 || true
+          fi
+
+          rm -f /etc/systemd/system/k3s.service
+          rm -f /etc/systemd/system/k3s.service.env
+          rm -f /usr/local/bin/k3s-uninstall.sh
+          rm -f /usr/local/bin/k3s
+          rm -rf /etc/rancher/k3s
+          rm -rf /var/lib/rancher/k3s
+          rm -rf /var/lib/kubelet
+          rm -rf /etc/cni
+      when: not k3s_server_uninstall.stat.exists
+
+    - name: Uninstall k3s server
+      ansible.builtin.command:
+        cmd: /usr/local/bin/k3s-uninstall.sh
+
+    - name: Remove leftover k3s server paths
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher/k3s
+        - /var/lib/rancher/k3s
+        - /var/lib/kubelet
+        - /etc/cni
+        - /run/k3s
+...
