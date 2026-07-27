@@ -57,16 +57,25 @@
           ansible.builtin.debug:
             var: kube_system_pods.stdout_lines
 
-    - name: CLuster DNS validation
+    - name: Cluster DNS validation
       block:
+        - name: Remove stale dns-test pod if present
+          ansible.builtin.command:
+            cmd: k3s kubectl delete pod dns-test --ignore-not-found
+          changed_when: false
+
         - name: Create temporary dns-test pod
           ansible.builtin.command:
-            cmd: k3s kubectl run dns-test --image=busybox --restart=Never --command -- sleep 300
+            cmd: >-
+              k3s kubectl run dns-test
+              --image=busybox:1.36
+              --restart=Never
+              --command -- sleep 300
           changed_when: true
 
         - name: Wait for dns-test pod to be ready
           ansible.builtin.command:
-            cmd: k3s kubectl wait pod dns-test --for=condition=Ready
+            cmd: k3s kubectl wait pod dns-test --for=condition=Ready --timeout=120s
           changed_when: false
 
         - name: Test DNS resolution inside the cluster
@@ -85,26 +94,40 @@
             cmd: k3s kubectl delete pod dns-test
           changed_when: false
 
-    - name: Inter-node scheduling validation
+    - name: Multi-node scheduling validation
       block:
-        - name: Cleanup stale nginx-test deployment if present
+        - name: Cleanup stale nginx-test daemonset if present
           ansible.builtin.command:
-            cmd: k3s kubectl delete deployment nginx-test --ignore-not-found
+            cmd: k3s kubectl delete daemonset nginx-test --ignore-not-found
           changed_when: false
 
-        - name: Create nginx-test deployment
-          ansible.builtin.command:
-            cmd: k3s kubectl create deployment nginx-test --image=nginx
-          changed_when: true
-
-        - name: Scale nginx-test deployment to 3 replicas
-          ansible.builtin.command:
-            cmd: k3s kubectl scale deployment nginx-test --replicas=3
+        - name: Create nginx-test daemonset on workers
+          ansible.builtin.shell: |
+            k3s kubectl apply -f - <<'EOF'
+            apiVersion: apps/v1
+            kind: DaemonSet
+            metadata:
+              name: nginx-test
+            spec:
+              selector:
+                matchLabels:
+                  app: nginx-test
+              template:
+                metadata:
+                  labels:
+                    app: nginx-test
+                spec:
+                  nodeSelector:
+                    lab.internal/worker: "true"
+                  containers:
+                    - name: nginx
+                      image: nginx
+            EOF
           changed_when: true
 
         - name: Wait for nginx-test rollout
           ansible.builtin.command:
-            cmd: k3s kubectl rollout status deployment nginx-test --timeout=180s
+            cmd: k3s kubectl rollout status daemonset nginx-test --timeout=180s
           changed_when: false
 
         - name: Show nginx-test pods
@@ -124,15 +147,20 @@
           register: scheduled_nodes
           changed_when: false
 
-        - name: Assert pod spread across workers when possible
+        - name: Verify worker-labeled nodes exist
+          ansible.builtin.command:
+            cmd: k3s kubectl get nodes -l lab.internal/worker=true --no-headers
+          register: labeled_workers
+          changed_when: false
+
+        - name: Assert worker labels exist
           ansible.builtin.assert:
             that:
-              - "(scheduled_nodes.stdout_lines | reject('equalto', '') | unique | list | length) >= (2 if worker_count|int > 1 else 1)"
-            fail_msg: "nginx-test pods ({{ scheduled_nodes.stdout_lines | reject('equalto', '') | unique | list | length }}) were not spread across enough nodes."
-            success_msg: "nginx-test pods ({{ scheduled_nodes.stdout_lines | reject('equalto', '') | unique | list | length }}) are distributed across nodes as expected."
+              - (labeled_workers.stdout_lines | reject('equalto', '') | list | length) == (worker_count | int)
+            fail_msg: "Expected {{ worker_count }} labeled worker nodes, found {{ labeled_workers.stdout_lines | reject('equalto', '') | list | length }}."
       always:
-        - name: Remove nginx-test deployment
+        - name: Remove nginx-test daemonset
           ansible.builtin.command:
-            cmd: k3s kubectl delete deployment nginx-test --ignore-not-found
+            cmd: k3s kubectl delete daemonset nginx-test --ignore-not-found
           changed_when: false
 ...

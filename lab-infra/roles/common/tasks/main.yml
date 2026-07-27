@@ -2,7 +2,8 @@
 - name: Install common packages
   ansible.builtin.apt:
     update_cache: yes
-    name: "{{ common_packages }}"  # from group_vars/all.yml
+    # set common_packages in group_vars/all.yml
+    name: "{{ common_packages }}"
     state: present
   become: true
 
@@ -49,10 +50,11 @@
         owner: root
         group: root
         mode: '0644'
+        # set lab_dns_server and lab_dns_domain in group_vars/all.yml
         content: |
           [Resolve]
-          DNS={{ lab_dns_server }}  # from group_vars/all.yml
-          Domains={{ lab_dns_domain }}  # from group_vars/all.yml
+          DNS={{ lab_dns_server }}
+          Domains={{ lab_dns_domain }}
 
     - name: Restart systemd-resolved
       ansible.builtin.service:
@@ -67,23 +69,26 @@
     owner: root
     group: root
     mode: '0644'
+    # set lab_dns_server and lab_dns_domain in group_vars/all.yml
     content: |
-      search {{ lab_dns_domain }} # from group_vars/all.yml
-      nameserver {{ lab_dns_server }} # from group_vars/all.yml
+      search {{ lab_dns_domain }}
+      nameserver {{ lab_dns_server }}
 
 - name: Verify DNS resolution
   become: true
   block:
-    - name: Resolve dns01.lab.internal
+    - name: Resolve internal DNS server
       ansible.builtin.command:
-        cmd: getent hosts dns01.lab.internal
+        cmd: "getent hosts dns01.{{ lab_dns_domain }}"
       register: dns01_lookup
       changed_when: false
       failed_when: dns01_lookup.rc != 0 or dns01_lookup.stdout | trim | length == 0
 
-    - name: Resolve k3s01-ctrl01.lab.internal
+    - name: Resolve k3s01 control plane server
       ansible.builtin.command:
-        cmd: getent hosts k3s01-ctrl01.lab.internal
+        cmd: >-
+          getent hosts
+          {{ groups['k3s01_servers'][0] }}.{{ lab_dns_domain }}
       register: k3s01_ctrl01_lookup
       changed_when: false
       failed_when: k3s01_ctrl01_lookup.rc != 0 or k3s01_ctrl01_lookup.stdout | trim | length == 0

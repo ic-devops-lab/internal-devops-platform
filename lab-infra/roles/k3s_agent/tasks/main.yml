@@ -1,8 +1,10 @@
 ---
-- name: Check if k3s agent is already installed
-  ansible.builtin.stat:
-    path: /etc/systemd/system/k3s-agent.service
-  register: k3s_agent_service
+- name: Check k3s-agent service state
+  ansible.builtin.command: systemctl is-active k3s-agent
+  register: k3s_agent_active
+  changed_when: false
+  failed_when: false
+  become: true
 
 - name: Wait until control-plane API is available
   ansible.builtin.wait_for:
@@ -10,20 +12,35 @@
     port: 6443
     timeout: 120
 
+- name: Download k3s installer
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/install-k3s.sh
+    mode: "0755"
+  when: k3s_agent_active.stdout != "active"
+
 - name: Install k3s agent
-  ansible.builtin.shell: |
-    set -e
-    curl -sfL https://get.k3s.io | \
-      INSTALL_K3S_VERSION="{{ k3s_version }}" \
-      K3S_URL="https://{{ k3s01_server_ip }}:6443" \
-      K3S_TOKEN="{{ hostvars['k3s01-ctrl01']['k3s_token']}}" \
-      INSTALL_K3S_EXEC="agent \
-        --node-name={{ inventory_hostname }} \
-        --flannel-iface={{ k3s_flannel_iface }} \
-        --kubelet-arg=node-ip={{ ansible_host }}" \
-      sh -
-  args:
-    executable: /bin/bash
+  ansible.builtin.command: /tmp/install-k3s.sh
+  environment:
+      INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      K3S_URL: "{{ k3s01_server_address }}"
+      K3S_TOKEN: "{{ hostvars[groups['k3s01_servers'][0]]['k3s_token'] }}"
+      INSTALL_K3S_EXEC: >-
+        agent
+        --node-name={{ inventory_hostname }}
+        --node-label=lab.internal/worker=true
+        --flannel-iface={{ k3s_flannel_iface }}
+        --kubelet-arg=node-ip={{ ansible_host }}
+  # no_log: true
   become: true
-  when: not k3s_agent_service.stat.exists
+  when: k3s_agent_active.stdout != "active"
+
+- name: Wait for k3s-agent to become active
+  ansible.builtin.command: systemctl is-active k3s-agent
+  register: k3s_agent_active_after
+  retries: 20
+  delay: 3
+  until: k3s_agent_active_after.stdout == "active"
+  changed_when: false
+  become: true
 ...

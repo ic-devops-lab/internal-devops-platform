@@ -41,6 +41,10 @@
     - name: Uninstall k3s agent
       ansible.builtin.command:
         cmd: /usr/local/bin/k3s-agent-uninstall.sh
+      register: k3s_agent_uninstall_result
+      failed_when:
+        - k3s_agent_uninstall_result.rc != 0
+        - "'No such file' not in k3s_agent_uninstall_result.stderr"
 
     - name: Remove leftover k3s agent paths
       ansible.builtin.file:
@@ -95,6 +99,10 @@
     - name: Uninstall k3s server
       ansible.builtin.command:
         cmd: /usr/local/bin/k3s-uninstall.sh
+      register: k3s_server_uninstall_result
+      failed_when:
+        - k3s_server_uninstall_result.rc != 0
+        - "'No such file' not in (k3s_server_uninstall_result.stderr | default(''))"
 
     - name: Remove leftover k3s server paths
       ansible.builtin.file:
@@ -106,4 +114,13 @@
         - /var/lib/kubelet
         - /etc/cni
         - /run/k3s
+
+- name: Remove local k3s artifacts
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Remove local kubeconfig
+      ansible.builtin.file:
+        path: "{{ local_kubeconfig_path }}"
+        state: absent
 ...

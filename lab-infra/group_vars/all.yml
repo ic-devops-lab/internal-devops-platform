@@ -16,5 +16,8 @@ common_packages:
 
 kubectl_version: "v1.35"
 
+# Local kubeconfig path on the host machine.
+local_kubeconfig_path: "{{ playbook_dir }}/../artifacts/kubeconfig"
+
 lab_dns_server: 192.168.56.2
 lab_dns_domain: lab.internal

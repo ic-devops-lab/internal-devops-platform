@@ -129,6 +129,10 @@ dig +short @192.168.56.2 k3s01-ctrl01
 dig +short @192.168.56.2 k3s01-wrk01
 dig +short @192.168.56.2 k3s01-wrk02
 
+dig +short @192.168.56.2 k3s01-ctrl01.lab.internal
+dig +short @192.168.56.2 k3s01-wrk01.lab.internal
+dig +short @192.168.56.2 k3s01-wrk02.lab.internal
+
 # deploy k3s
 ansible-playbook playbooks/k3s.yml
 

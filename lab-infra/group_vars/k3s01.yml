@@ -2,6 +2,8 @@
 # Pin the k3s version so that rebuilding the cluster is deterministic.
 #
 # Do not rely on whatever version happens to be latest at deployment time.
+# Changing this variable does not currently upgrade an existing installation.
+# Reset or destroy the cluster before deploying another version.
 k3s_version: "v1.35.4+k3s1"
 
 # Internal DNS server used by the VM operating systems.
