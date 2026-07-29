@@ -1,0 +1,121 @@
+# HELM_BUILDKITE_APT_KEY_ID="DDF78C3E6EBB2D2CC223C95C62BA89D07698DBC6"
+
+# sudo apt-get install curl gpg apt-transport-https --yes
+
+# curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey > "${TMPDIR:-/tmp}/helm.gpg"
+
+# # Ensure that the key ID matches to prevent a repository compromise from establishing an attacker controlled key
+# if [ "$(gpg --show-keys --with-colons "${TMPDIR:-/tmp}/helm.gpg" | awk -F: '$1 == "fpr" {print $10}' | head -n 1)" != "${HELM_BUILDKITE_APT_KEY_ID}" ]; then echo "ERROR: Unexpected Helm APT key ID: potential key compromise"; exit 1; fi
+
+# cat "${TMPDIR:-/tmp}/helm.gpg" | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+# echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+
+# sudo apt-get update
+# sudo apt-get install helm
+
+---
+- name: Install Helm dependencies if not present
+  ansible.builtin.apt:
+    update_cache: true
+    # set in the group_vars/k3s01_servers.yml file
+    name: "{{ helm_dependencies }}"
+    state: present
+  become: true
+
+- name: Check if Helm is installed
+  ansible.builtin.command: helm version --short
+  register: helm_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Install Helm
+  when: helm_check.rc != 0
+  block:
+    # Step 1
+    - name: Download Buildkite Helm ASCII GPG key to temporary location
+      ansible.builtin.get_url:
+        url: https://packages.buildkite.com/helm-linux/helm-debian/gpgkey
+        dest: /tmp/helm.gpg
+        checksum: "sha256:dc6e3f91236491ab4af688c9cec2f5ea826817dc37181e59fc7a35e18800c4ab"
+        mode: '0644'
+
+    # Step 2
+    - name: Read downloaded key fingerprint
+      ansible.builtin.shell: |
+        set -o pipefail
+        gpg --show-keys --with-colons /tmp/helm.gpg | awk -F: '$1 == "fpr" {print $10; exit}'
+      args:
+        executable: /bin/bash
+      register: helm_key_fpr
+      changed_when: false
+
+    - name: Fail if fingerprint is unexpected
+      ansible.builtin.assert:
+        that:
+          - helm_key_fpr.stdout == "DDF78C3E6EBB2D2CC223C95C62BA89D07698DBC6"
+        fail_msg: "Unexpected Helm APT key fingerprint: {{ helm_key_fpr.stdout }}"
+
+    # Step 3
+    - name: Dearmor key into apt keyring
+      ansible.builtin.command:
+        argv:
+          - gpg
+          - --dearmor
+          - --yes
+          - --output
+          - /usr/share/keyrings/helm.gpg
+          - /tmp/helm.gpg
+      become: true
+
+    # Step 4
+    - name: Add Helm apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main"
+        filename: helm-stable-debian
+        state: present
+        update_cache: true
+      become: true
+
+    # Step 5
+    - name: Install helm package
+      ansible.builtin.apt:
+        update_cache: true
+        name: "helm={{ helm_version }}"
+        state: present
+      become: true
+
+    - name: Step 5 - Verify helm is installed
+      ansible.builtin.command: helm version --short
+      changed_when: false
+
+- name: Install Python Kubernetes dependencies for Ansible modules
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - python3-pip
+      - python3-kubernetes
+      - python3-yaml
+    state: present
+  become: true
+
+# reproduces `helm list -A` to check if Helm is working
+- name: Validate connectivity
+  ansible.builtin.command: helm list -A
+  environment:
+    KUBECONFIG: "{{ kubeconfig_dest }}"
+  changed_when: false
+
+- name: Add Helm repositories
+  kubernetes.core.helm_repository:
+    name: "{{ item.name }}"
+    repo_url: "{{ item.url }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_dest }}"
+  loop: "{{ helm_repositories }}"
+
+- name: Update Helm repositories
+  ansible.builtin.command: helm repo update
+  environment:
+    KUBECONFIG: "{{ kubeconfig_dest }}"
+  changed_when: false
+...

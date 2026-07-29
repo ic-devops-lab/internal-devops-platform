@@ -1,0 +1,6 @@
+---
+- name: Install Helm to k3s server
+  hosts: k3s01_servers
+  roles:
+    - k3s_helm
+...

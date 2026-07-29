@@ -9,6 +9,7 @@
   hosts: k3s01_servers
   roles:
     - k3s_server
+    - k3s_helm
 
 - name: Install k3s agents
   hosts: k3s01_agents

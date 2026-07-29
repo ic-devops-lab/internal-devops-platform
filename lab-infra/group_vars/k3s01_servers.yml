@@ -1,0 +1,28 @@
+helm_version: "4.2.3-1"
+
+# Helm 4+: curl gpg apt-transport-https
+helm_dependencies:
+  - curl
+  - gpg
+  - apt-transport-https
+
+# Helm repositories to add to the cluster.
+# Uncomment and add more repositories as needed.
+helm_repositories:
+  # - name: argo
+  #   url: https://argoproj.github.io/argo-helm
+
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+
+  - name: grafana
+    url: https://grafana.github.io/helm-charts
+
+  # - name: jetstack
+  #   url: https://charts.jetstack.io
+
+  # - name: gitlab
+  #   url: https://charts.gitlab.io
+
+  # - name: ingress-nginx
+  #   url: https://kubernetes.github.io/ingress-nginx

@@ -52,14 +52,14 @@ Workers register to the cluster and appear as Ready nodes once kubelet and netwo
 
 - File with variables for k3s cluster created; see [`lab-infra/group_vars/k3s01.yml`](../lab-infra/group_vars/k3s01.yml)
 
-- A role for preparing all VMs added: see [`roles/common/tasks/main.yml`](../lab-infra/roles/common/tasks/main.yml)
+- A role for preparing all VMs added: see [`roles/common/common/tasks/main.yml`](../lab-infra/roles/common/common/tasks/main.yml)
 
   **Role responsibilities:**
   - update the APT cache;
   - install basic packages
   - configure DNS resolver
 
-- A role for preparing cluster nodes created; see [`roles/k3s_common/tasks/main.yml`](../lab-infra/roles/k3s_common/tasks/main.yml)
+- A role for preparing cluster nodes created; see [`roles/k3s/k3s_common/tasks/main.yml`](../lab-infra/roles/k3s/k3s_common/tasks/main.yml)
 
   **Role responsibilities:**
   - update the APT cache;
@@ -71,7 +71,7 @@ Workers register to the cluster and appear as Ready nodes once kubelet and netwo
   - [not implemented yet] ensure time synchronization;
   - [not implemented yet] configure hostnames if necessary.
 
-- A role for configuring a controle-plane node added: see [`roles/k3s_server/tasks/main.yml`](../lab-infra/roles/k3s_server/tasks/main.yml)
+- A role for configuring a controle-plane node added: see [`roles/k3s/k3s_server/tasks/main.yml`](../lab-infra/roles/k3s/k3s_server/tasks/main.yml)
 
   **Role responsibilities:**
   - download the official k3s installer;
@@ -83,7 +83,7 @@ Workers register to the cluster and appear as Ready nodes once kubelet and netwo
   - retrieve kubeconfig;
   - validate the server node.
 
-- A role for configuring a worker node added; see [`roles/k3s_agent/tasks/main.yml`](../lab-infra/roles/k3s_agent/tasks/main.yml)
+- A role for configuring a worker node added; see [`roles/k3s/k3s_agent/tasks/main.yml`](../lab-infra/roles/k3s/k3s_agent/tasks/main.yml)
 
   **Role responsibilities:**
   - ensure the k3s server is reachable;

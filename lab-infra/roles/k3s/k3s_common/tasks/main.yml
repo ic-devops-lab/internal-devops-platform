@@ -1,5 +1,5 @@
 ---
-- name: Install common packages
+- name: Install common k3s packages
   ansible.builtin.apt:
     update_cache: yes
     # set k3s_common_packages in group_vars/k3s01.yml

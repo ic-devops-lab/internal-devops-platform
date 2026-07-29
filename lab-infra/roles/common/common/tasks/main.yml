@@ -1,4 +1,17 @@
 ---
+# - name: Repair and restore broken APT directory structure
+#   ansible.builtin.file:
+#     path: "{{ item }}"
+#     state: directory
+#     mode: '0755'
+#     owner: root
+#     group: root
+#   loop:
+#     - /var/lib/apt/lists
+#     - /var/lib/apt/lists/partial
+#   become: true
+#   when: inventory_hostname == 'k3s01-ctrl01'
+
 - name: Install common packages
   ansible.builtin.apt:
     update_cache: yes
