@@ -143,7 +143,9 @@ vagrant ssh k3s01-ctrl01 -c "kubectl get nodes -o wide"
 grep -q '^KUBECONFIG=' .env 2>/dev/null \
   && sed -i 's|^KUBECONFIG=.*|KUBECONFIG="$PWD/artifacts/kubeconfig"|' .env \
   || echo 'KUBECONFIG="$PWD/artifacts/kubeconfig"' >> .env
-source .env
+# kubectl runs in a child process, so just `source .env` is not enough
+# we need to export environment variables using auto-export option
+set -a ; source .env; set +a
 # verify connection to k3s from the host
 kubectl get nodes -o wide
 ```
