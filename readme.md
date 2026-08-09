@@ -125,9 +125,15 @@ See [the step-by-step guide for deploying the DNS service](./docs/dns.md).
 
 ### K3S Cluster
 
-**Probmlem to solve**
+**Problem to solve**: once your infrastructure grows beyond a handful of services running directly on VMs, managing deployments, scaling, and restarts becomes manual and error-prone. Running containers without orchestration means no automatic recovery from failures, no consistent resource limits, and no unified way to expose or update services.
 
-**Benefits**
+And this is where a lightweight Kubernetes cluster becomes an essential component of the platform.
+
+**Benefits**:
+- *automated workload scheduling and recovery*: the cluster scheduler places containers on available nodes and restarts them on failure, removing the need for manual intervention;
+- *declarative service definitions*: all applications and their configuration are described in version-controlled manifests, making the platform reproducible and auditable;
+- *unified networking and service discovery*: services communicate by name within the cluster, and Ingress exposes them externally through a single entry point;
+- *foundation for GitOps*: a running cluster is the prerequisite for Argo CD, which drives all subsequent application deployments from Git.
 
 **Implementation steps**
 - adding 3 VMs for k3s cluster nodes to Vagrantfile
@@ -139,5 +145,5 @@ See [the step-by-step guide for deploying the DNS service](./docs/dns.md).
   - k3s-agent
 - creating an Ansible playbook for automated deployment of the cluster
 - creating a playbook for uninstalling cluster agent ans servers
-
+- creating a standalone playbook for (re-)installing Helm: `playbooks/k3s-helm.yml`
 ---

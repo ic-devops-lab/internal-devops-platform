@@ -97,6 +97,17 @@ Workers register to the cluster and appear as Ready nodes once kubelet and netwo
 
 - A playbook uninstalling cluster agents and servers and cleaning up leftover data; see [`playbooks/k3s-reset.yml`](../lab-infra/playbooks/k3s-reset.yml)
 
+- A role for installing Helm on the control-plane node added; see [`roles/k3s/k3s_helm/tasks/main.yml`](../lab-infra/roles/k3s/k3s_helm/tasks/main.yml)
+
+  **Role responsibilities:**
+  - verify GPG key fingerprint of the Helm APT package (key pinned);
+  - install Helm from the official Buildkite APT repository;
+  - add configured Helm repositories (set in [`group_vars/k3s01_servers.yml`](../lab-infra/group_vars/k3s01_servers.yml)).
+
+  > Helm version and repositories are configured in [`lab-infra/group_vars/k3s01_servers.yml`](../lab-infra/group_vars/k3s01_servers.yml).
+
+- A standalone playbook for (re-)installing Helm without rebuilding the whole cluster; see [`playbooks/k3s-helm.yml`](../lab-infra/playbooks/k3s-helm.yml)
+
 ---
 
 ## Infrastructure setup/update
