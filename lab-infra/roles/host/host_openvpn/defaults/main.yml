@@ -1,0 +1,11 @@
+---
+openvpn_packages:
+  - openvpn
+  - easy-rsa
+
+openvpn_dh_file: "{{ openvpn_pki_dir }}/dh.pem"
+openvpn_server_cert: "{{ openvpn_pki_dir }}/issued/server.crt"
+openvpn_server_key: "{{ openvpn_pki_dir }}/private/server.key"
+
+openvpn_service_name: "openvpn-server@server"
+...

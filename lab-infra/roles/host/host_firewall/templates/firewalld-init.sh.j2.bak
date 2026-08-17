@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG="/var/log/firewalld-init.log"
+exec >>"${LOG}" 2>&1
+echo "=== $(date -Is) Applying managed firewalld policy ==="
+
+PUBLIC_INTERFACE="{{ openvpn_public_interface }}"
+VPN_INTERFACE="{{ openvpn_tunnel_interface }}"
+LAB_INTERFACE="{{ lab_interface }}"
+
+PUBLIC_ZONE="{{ host_firewall_public_zone }}"
+VPN_ZONE="{{ host_firewall_vpn_zone }}"
+LAB_ZONE="{{ host_firewall_lab_zone }}"
+ADMIN_ZONE="{{ host_firewall_admin_zone }}"
+VPN_TO_LAB_POLICY="{{ host_firewall_vpn_to_lab_policy }}"
+
+SUPERADMIN_FALLBACK_ENABLED="{{ superadmin_fallback_enabled | bool | lower }}"
+
+PUBLIC_SERVICES=(
+{% for service in host_firewall_public_services %}
+  "{{ service }}"
+{% endfor %}
+)
+
+PUBLIC_PORTS=(
+{% for port in host_firewall_public_ports %}
+  "{{ port }}"
+{% endfor %}
+)
+
+VPN_SERVICES=(
+{% for service in host_firewall_vpn_services %}
+  "{{ service }}"
+{% endfor %}
+)
+
+LAB_SERVICES=(
+{% for service in host_firewall_lab_services %}
+  "{{ service }}"
+{% endfor %}
+)
+
+LAB_PORTS=(
+{% for port in host_firewall_lab_ports %}
+  "{{ port }}"
+{% endfor %}
+)
+
+SUPERADMIN_FALLBACK_CIDRS=(
+{% for cidr in superadmin_fallback_cidrs %}
+  "{{ cidr }}"
+{% endfor %}
+)
+
+RESTRICTED_TCP_PORTS=(
+{% for port in host_firewall_restricted_tcp_ports %}
+  "{{ port }}"
+{% endfor %}
+)
+
+ensure_zone() {
+  local zone="$1"
+
+  if ! firewall-cmd --permanent --get-zones \
+      | tr ' ' '\n' \
+      | grep -Fxq "${zone}"; then
+    firewall-cmd --permanent --new-zone="${zone}"
+  fi
+}
+
+clear_zone_services() {
+  local zone="$1"
+  local service
+
+  for service in $(
+    firewall-cmd \
+      --permanent \
+      --zone="${zone}" \
+      --list-services
+  ); do
+    firewall-cmd \
+      --permanent \
+      --zone="${zone}" \
+      --remove-service="${service}"
+  done
+}
+
+clear_zone_ports() {
+  local zone="$1"
+  local port
+
+  for port in $(
+    firewall-cmd \
+      --permanent \
+      --zone="${zone}" \
+      --list-ports
+  ); do
+    firewall-cmd \
+      --permanent \
+      --zone="${zone}" \
+      --remove-port="${port}"
+  done
+}
+
+clear_zone_sources() {
+  local zone="$1"
+  local source
+
+  for source in $(
+    firewall-cmd \
+      --permanent \
+      --zone="${zone}" \
+      --list-sources
+  ); do
+    firewall-cmd \
+      --permanent \
+      --zone="${zone}" \
+      --remove-source="${source}"
+  done
+}
+
+add_services() {
+  local zone="$1"
+  shift
+
+  local service
+
+  for service in "$@"; do
+    firewall-cmd \
+      --permanent \
+      --zone="${zone}" \
+      --add-service="${service}"
+  done
+}
+
+add_ports() {
+  local zone="$1"
+  shift
+
+  local port
+
+  for port in "$@"; do
+    firewall-cmd \
+      --permanent \
+      --zone="${zone}" \
+      --add-port="${port}"
+  done
+}
+
+# Ensure firewalld running
+systemctl enable --now firewalld
+
+# Ensure required zones exist.
+ensure_zone "${VPN_ZONE}"
+ensure_zone "${LAB_ZONE}"
+ensure_zone "${ADMIN_ZONE}"
+ensure_zone "${PUBLIC_ZONE}"
+
+# Use a clean, predictable zone as default
+firewall-cmd --set-default-zone="${PUBLIC_ZONE}"
+
+# Explicitly bind each network interface to its intended zone.
+firewall-cmd \
+  --permanent \
+  --zone="${PUBLIC_ZONE}" \
+  --change-interface="${PUBLIC_INTERFACE}"
+
+firewall-cmd \
+  --permanent \
+  --zone="${VPN_ZONE}" \
+  --change-interface="${VPN_INTERFACE}"
+
+firewall-cmd \
+  --permanent \
+  --zone="${LAB_ZONE}" \
+  --change-interface="${LAB_INTERFACE}"
+
+# Use an explicit deny-by-default target for input traffic.
+firewall-cmd \
+  --permanent \
+  --zone="${PUBLIC_ZONE}" \
+  --set-target=DROP
+
+firewall-cmd \
+  --permanent \
+  --zone="${VPN_ZONE}" \
+  --set-target=DROP
+
+firewall-cmd \
+  --permanent \
+  --zone="${LAB_ZONE}" \
+  --set-target=DROP
+
+firewall-cmd \
+  --permanent \
+  --zone="${ADMIN_ZONE}" \
+  --set-target=DROP
+
+# Reconcile public services and ports.
+clear_zone_services "${PUBLIC_ZONE}"
+clear_zone_ports "${PUBLIC_ZONE}"
+
+add_services "${PUBLIC_ZONE}" "${PUBLIC_SERVICES[@]}"
+add_ports "${PUBLIC_ZONE}" "${PUBLIC_PORTS[@]}"
+
+# Reconcile services available through the VPN.
+clear_zone_services "${VPN_ZONE}"
+clear_zone_ports "${VPN_ZONE}"
+
+add_services "${VPN_ZONE}" "${VPN_SERVICES[@]}"
+
+# Reconcile services available from the VM network to the host.
+clear_zone_services "${LAB_ZONE}"
+clear_zone_ports "${LAB_ZONE}"
+
+add_services "${LAB_ZONE}" "${LAB_SERVICES[@]}"
+add_ports "${LAB_ZONE}" "${LAB_PORTS[@]}"
+
+# Reconcile the source-based emergency administrator zone.
+clear_zone_services "${ADMIN_ZONE}"
+clear_zone_ports "${ADMIN_ZONE}"
+clear_zone_sources "${ADMIN_ZONE}"
+
+if [[ "${SUPERADMIN_FALLBACK_ENABLED}" == "true" ]]; then
+  firewall-cmd \
+    --permanent \
+    --zone="${ADMIN_ZONE}" \
+    --add-service=ssh
+
+  for source in "${SUPERADMIN_FALLBACK_CIDRS[@]}"; do
+    firewall-cmd \
+      --permanent \
+      --zone="${ADMIN_ZONE}" \
+      --add-source="${source}"
+  done
+fi
+
+# Deny direct access to common database and infrastructure ports.
+#
+# These rules protect services listening on the host. VM access should be
+# controlled through the VPN-to-lab forwarding policy and the VM firewalls.
+for port in "${RESTRICTED_TCP_PORTS[@]}"; do
+  firewall-cmd \
+    --permanent \
+    --zone="${PUBLIC_ZONE}" \
+    --add-rich-rule="rule family='ipv4' port port='${port}' protocol='tcp' reject"
+
+  firewall-cmd \
+    --permanent \
+    --zone="${PUBLIC_ZONE}" \
+    --add-rich-rule="rule family='ipv6' port port='${port}' protocol='tcp' reject"
+done
+
+# Permit connections initiated through the VPN toward the private VM network.
+if ! firewall-cmd --permanent --get-policies \
+    | tr ' ' '\n' \
+    | grep -Fxq "${VPN_TO_LAB_POLICY}"; then
+  firewall-cmd \
+    --permanent \
+    --new-policy="${VPN_TO_LAB_POLICY}"
+fi
+
+firewall-cmd \
+  --permanent \
+  --policy="${VPN_TO_LAB_POLICY}" \
+  --add-ingress-zone="${VPN_ZONE}" 2>/dev/null || true
+
+firewall-cmd \
+  --permanent \
+  --policy="${VPN_TO_LAB_POLICY}" \
+  --add-egress-zone="${LAB_ZONE}" 2>/dev/null || true
+
+firewall-cmd \
+  --permanent \
+  --policy="${VPN_TO_LAB_POLICY}" \
+  --set-target=ACCEPT
+
+firewall-cmd --reload
+
+echo "[✓] Managed firewall policy applied"
+
+firewall-cmd --zone="${PUBLIC_ZONE}" --list-all
+firewall-cmd --zone="${VPN_ZONE}" --list-all
+firewall-cmd --zone="${LAB_ZONE}" --list-all
+firewall-cmd --zone="${ADMIN_ZONE}" --list-all
+firewall-cmd --policy="${VPN_TO_LAB_POLICY}" --list-all

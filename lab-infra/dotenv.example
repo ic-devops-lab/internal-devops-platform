@@ -1,0 +1,26 @@
+# host env vars (used in Ansible vars files)
+# --- none-root user on the host machine Ansible uses for installing
+#     and configuring some tools
+export NONE_ROOT_USER="my-none-root-user"
+export OPENVPN_PUBLIC_INTERFACE=enp4s0
+export OPENVPN_TUNNEL_INTERFACE=tun0
+export LAB_INTERFACE=vboxnet0
+
+export OPENVPN_SUBNET=10.8.0.0/24
+export LAB_SUBNET=192.168.56.0/24
+
+# Enable this after
+# VPN -> VM network access is known to work
+# export OPENVPN_PUSH_DNS="true"
+
+# fallback-to-ssh settings for the case when OpenVPN access is not working
+export SUPERADMIN_FALLBACK_ENABLED=true
+# list CIDRS of the machines ssh access is allowed from here
+export SUPERADMIN_FALLBACK_CIDRS='["203.0.113.10/32","198.51.100.25/32"]'
+
+# kubernetes env vars
+export KUBECONFIG="$PWD/artifacts/kubeconfig"
+
+# firewall policy service settings
+# uncomment to customize
+# export FIREWALL_POLICY_SERVICE_NAME="firewalld-init-custom"

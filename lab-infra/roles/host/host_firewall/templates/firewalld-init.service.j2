@@ -1,0 +1,13 @@
+[Unit]
+Description=Apply managed firewalld policy
+After=network-online.target firewalld.service
+Wants=network-online.target firewalld.service
+Requires=firewalld.service
+
+[Service]
+Type=oneshot
+ExecStart=/etc/{{ firewall_policy_service_name }}.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

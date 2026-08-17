@@ -1,3 +1,4 @@
+---
 common_packages:
   - ca-certificates
   - curl
@@ -19,5 +20,31 @@ kubectl_version: "v1.35"
 # Local kubeconfig path on the host machine.
 local_kubeconfig_path: "{{ playbook_dir }}/../artifacts/kubeconfig"
 
+# Internal DNS.
 lab_dns_server: 192.168.56.2
 lab_dns_domain: lab.internal
+
+# VirtualBox private network.
+lab_subnet: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'LAB_SUBNET',
+      default='192.168.56.0/24'
+    )
+  }}
+lab_netmask: "255.255.255.0"
+lab_subnet_cidr: "192.168.56.0/24"
+
+lab_interface: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'LAB_INTERFACE',
+      default=undef('LAB_INTERFACE must be defined')
+    )
+  }}
+
+# Host address on the VirtualBox host-only network.
+lab_gateway: "192.168.56.1"
+...

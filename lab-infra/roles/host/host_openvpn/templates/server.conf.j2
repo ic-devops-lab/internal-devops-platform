@@ -1,0 +1,56 @@
+# Managed by Ansible.
+# Manual changes will be overwritten.
+
+port {{ openvpn_port }}
+proto {{ openvpn_protocol }}
+dev tun
+
+# PKI
+ca ca.crt
+cert server.crt
+key server.key
+dh dh.pem
+tls-crypt ta.key
+
+# VPN network
+server {{ openvpn_subnet | regex_replace('/\\d+$', '') }} {{ openvpn_netmask }}
+
+ifconfig-pool-persist ipp.txt
+
+# ------------------------------------------------------------
+# Split-tunnel routing
+# ------------------------------------------------------------
+
+# uncomment for Full Tunnel mode (all traffic from your local machine goes via VPN server)
+# push "redirect-gateway def1 bypass-dhcp"
+# push "dhcp-option DNS 1.1.1.1"
+
+# Route only the private infrastructure network through VPN.
+push "route {{ lab_subnet | regex_replace('/\\d+$', '') }} {{ lab_netmask }}"
+
+# Do NOT push redirect-gateway.
+#
+# Normal Internet traffic should continue through the
+# workstation's local network.
+
+{% if openvpn_push_dns %}
+# Internal DNS.
+#
+# Enable only after VPN -> internal network routing has
+# been validated successfully.
+push "dhcp-option DNS {{ lab_dns_server }}"
+push "dhcp-option DOMAIN {{ lab_dns_domain }}"
+{% endif %}
+
+keepalive 10 120
+cipher AES-256-GCM
+auth SHA256
+
+user nobody
+group nogroup
+
+persist-key
+persist-tun
+
+status openvpn-status.log
+verb 3

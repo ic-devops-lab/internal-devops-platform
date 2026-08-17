@@ -94,14 +94,14 @@ ansible-playbook playbooks/dns.yml
 
 **Recommended order**
 
-| Tech/Tool | Docfile  | Playbook | Implemented  | Link to implementation |
-| --------- | -------- | -------- | ------------ | ---------------------- |
-| firewall  |          |          | ext.repo     | [Securing a Remote Linux Host with firewalld and OpenVPN](https://github.com/ic-devops-lab/devops-labs/tree/main/ProtectRemoteHostWithFirewallAndVPN) |
-| OpenVPN   |          |          | ext.repo     | [Securing a Remote Linux Host with firewalld and OpenVPN](https://github.com/ic-devops-lab/devops-labs/tree/main/ProtectRemoteHostWithFirewallAndVPN) |
-| GitLab SE |          |          | ext.repo     | 1. [GitLab SE behind Cloudflare Zero Trust](https://github.com/ic-devops-lab/devops-labs/blob/main/GitLabSE-behind-CloudFlare/readme.md) 2. [GitLab SE behind Cloudflare Zero Trust: Part 2. Introducing the Tunnels](https://github.com/ic-devops-lab/devops-labs/blob/main/GitLabSEBehindCloudflare02Tunnels/readme.md) |
-| DNS       |  dns.md  | dns.yml  | in this repo | [030-dns-service](https://github.com/ic-devops-lab/internal-devops-platform/tree/030-dns-service) |
-| K3S       | k3s.md   | k3s.yml  | in this repo | [040-k3s-cluster] (https://github.com/ic-devops-lab/internal-devops-platform/tree/040-k3s-cluster) |
-|           |          |          |              |                        |
+| Tech/Tool | Docfile    | Playbook         | Implemented  | Link to implementation |
+| --------- | ---------- | ---------------- | ------------ | ---------------------- |
+| DNS       |  dns.md    | dns.yml          | in this repo | [030-dns-service](https://github.com/ic-devops-lab/internal-devops-platform/tree/030-dns-service) |
+| OpenVPN   | openvpn.md | host_openvpn.yml | in this repo | [025-openvpn](https://github.com/ic-devops-lab/internal-devops-platform/tree/025-openvpn) |
+| firewall  | openvpn.md | host_openvpn.yml | in this repo | [025-openvpn](https://github.com/ic-devops-lab/internal-devops-platform/tree/025-openvpn) |
+| GitLab SE |            |                  | in ext.repo  | 1. [GitLab SE behind Cloudflare Zero Trust](https://github.com/ic-devops-lab/devops-labs/blob/main/GitLabSE-behind-CloudFlare/readme.md) 2. [GitLab SE behind Cloudflare Zero Trust: Part 2. Introducing the Tunnels](https://github.com/ic-devops-lab/devops-labs/blob/main/GitLabSEBehindCloudflare02Tunnels/readme.md) |
+| K3S       | k3s.md     | k3s.yml          | in this repo | [040-k3s-cluster] (https://github.com/ic-devops-lab/internal-devops-platform/tree/040-k3s-cluster) |
+|           |            |                  |              |                        |
 
 ---
 
@@ -120,6 +120,44 @@ And this is where an internal DNS could be an essential component of your infras
 - *centralized routing configuration*: we keep our map of relations between domain names and network addresses in a single place.
 
 See [the step-by-step guide for deploying the DNS service](./docs/dns.md).
+
+---
+
+### OpenVPN
+
+> This repo includes automation for the OpenVPN service. Manual setup has been described in [Securing a Remote Linux Host with firewalld and OpenVPN](https://github.com/ic-devops-lab/devops-labs/tree/main/ProtectRemoteHostWithFirewallAndVPN)
+
+**Problem to solve**: providing secure remote access to internal lab services without exposing them directly to the Internet.
+
+**Benefits**:
+- *secure access to private infrastructure*: remote users can reach services such as `dns01.lab.internal` and `k3s01-ctrl01.lab.internal` through the VPN;
+- *split-tunnel networking*: normal internet traffic stays local while the lab subnet is routed over the VPN;
+- *repeatable certificate lifecycle*: PKI, server identity, and client profiles are managed as code with Ansible.
+
+**Implementation steps**
+- adding OpenVPN PKI and server configuration roles for the host;
+- creating the Ansible playbook to install and configure the VPN service;
+- preserving existing PKI state and client certificates while allowing new clients to be issued on demand;
+- validating access to the private network through the VPN tunnel.
+
+---
+
+### Firewall
+
+> This repo includes automation for the host firewall and VPN routing setup. Manual setup has been described in [Securing a Remote Linux Host with firewalld and OpenVPN](https://github.com/ic-devops-lab/devops-labs/tree/main/ProtectRemoteHostWithFirewallAndVPN)
+
+**Problem to solve**: securing the host facing the Internet while controlling access to public and private resources.
+
+**Benefits**:
+- *restricted public exposure*: only HTTP/HTTPS and OpenVPN are allowed on the public interface;
+- *least-privilege access*: SSH is available via VPN and optional admin fallback addresses only;
+- *safe lab access*: VPN traffic is routed to the private lab network with controlled SNAT and policy-based filtering.
+
+**Implementation steps**
+- adding `firewalld` zones for `public`, `vpn`, `lab`, and `admin-fallback`;
+- enabling forwarding and policy-based routing from VPN clients to the `192.168.56.0/24` network;
+- creating the `host_firewall` role and startup automation for permanent firewall configuration;
+- integrating the firewall setup with the OpenVPN infrastructure playbook.
 
 ---
 
@@ -146,4 +184,5 @@ And this is where a lightweight Kubernetes cluster becomes an essential componen
 - creating an Ansible playbook for automated deployment of the cluster
 - creating a playbook for uninstalling cluster agent ans servers
 - creating a standalone playbook for (re-)installing Helm: `playbooks/k3s-helm.yml`
+
 ---

@@ -1,0 +1,129 @@
+---
+- name: Install OpenVPN
+  ansible.builtin.apt:
+    name: "{{ openvpn_packages }}"
+    state: present
+    update_cache: true
+  become: true
+
+- name: Ensure OpenVPN server directory exists
+  ansible.builtin.file:
+    path: "{{ openvpn_server_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# ------------------------------------------------------------
+# Deploy PKI material
+# ------------------------------------------------------------
+
+- name: Deploy CA certificate
+  ansible.builtin.copy:
+    src: "{{ openvpn_pki_dir }}/ca.crt"
+    dest: "{{ openvpn_server_dir }}/ca.crt"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart OpenVPN
+
+- name: Deploy DH parameters
+  ansible.builtin.copy:
+    src: "{{ openvpn_dh_file }}"
+    dest: "{{ openvpn_server_dir }}/dh.pem"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart OpenVPN
+
+- name: Deploy server certificate
+  ansible.builtin.copy:
+    src: "{{ openvpn_server_cert }}"
+    dest: "{{ openvpn_server_dir }}/server.crt"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart OpenVPN
+
+- name: Deploy server private key
+  ansible.builtin.copy:
+    src: "{{ openvpn_server_key }}"
+    dest: "{{ openvpn_server_dir }}/server.key"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  notify: Restart OpenVPN
+
+- name: Deploy tls-crypt key
+  ansible.builtin.copy:
+    src: "{{ openvpn_ta_key }}"
+    dest: "{{ openvpn_server_dir }}/ta.key"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  notify: Restart OpenVPN
+
+# ------------------------------------------------------------
+# Configuration
+# ------------------------------------------------------------
+
+- name: Deploy OpenVPN server configuration
+  ansible.builtin.template:
+    src: "server.conf.j2"
+    dest: "{{ openvpn_server_dir }}/server.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart OpenVPN
+
+# ------------------------------------------------------------
+# Routing
+# ------------------------------------------------------------
+
+- name: Enable IPv4 forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    state: present
+    sysctl_set: true
+    reload: true
+    sysctl_file: /etc/sysctl.d/99-openvpn.conf
+
+- name: Apply pending OpenVPN restart
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure OpenVPN is enabled and running
+  ansible.builtin.service:
+    name: "{{ openvpn_service_name }}"
+    state: started
+    enabled: true
+  become: true
+
+- name: Verify OpenVPN service state
+  ansible.builtin.command:
+    cmd: "systemctl is-active {{ openvpn_service_name }}"
+  register: openvpn_service_check
+  changed_when: false
+  failed_when: openvpn_service_check.stdout | trim != "active"
+  become: true
+
+- name: Verify OpneVPN port is listening
+  ansible.builtin.shell: |
+    set -o pipefail
+    ss -tulnn | grep -E "udp.*:{{ openvpn_port }}\b"
+  args:
+    executable: /bin/bash
+  changed_when: false
+  become: true
+...

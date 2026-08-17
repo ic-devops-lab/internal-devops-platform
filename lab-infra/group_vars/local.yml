@@ -1,0 +1,113 @@
+---
+# OpenVPN network.
+openvpn_subnet: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'OPENVPN_SUBNET',
+      default='10.8.0.0/24'
+    )
+  }}
+openvpn_netmask: "255.255.255.0"
+openvpn_subnet_cidr: "10.8.0.0/24"
+
+openvpn_port: 1194
+openvpn_protocol: udp
+
+# OpenVPN filesystem locations.
+openvpn_server_dir: "/etc/openvpn/server"
+
+# Persistent Easy-RSA working directory.
+#
+# Existing PKI will be reused from this location.
+# On a fresh installation it will be created here.
+# !!! set your real none_root_user in .env file before running the playbook.
+none_root_user: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'NONE_ROOT_USER',
+      default=undef('NONE_ROOT_USER must be defined')
+    )
+  }}
+
+openvpn_ca_dir: "/home/{{ none_root_user }}/openvpn-ca"
+
+openvpn_pki_dir: "{{ openvpn_ca_dir }}/pki"
+openvpn_ta_key: "{{ openvpn_ca_dir }}/ta.key"
+openvpn_dh_file: "{{ openvpn_pki_dir }}/dh.pem"
+openvpn_server_cert: "{{ openvpn_pki_dir }}/issued/server.crt"
+openvpn_server_key: "{{ openvpn_pki_dir }}/private/server.key"
+
+# Host network interfaces.
+#
+# !!! set your real openvpn_public_interface and lab_interface in .env file
+# before running the playbook.
+openvpn_public_interface: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'OPENVPN_PUBLIC_INTERFACE',
+      default=undef('OPENVPN_PUBLIC_INTERFACE must be defined')
+    )
+  }}
+
+openvpn_tunnel_interface: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'OPENVPN_TUNNEL_INTERFACE',
+      default='tun0'
+    )
+  }}
+
+# Optional break-glass SSH access
+superadmin_fallback_enabled: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'SUPERADMIN_FALLBACK_ENABLED',
+      default='false'
+    ) | bool
+  }}
+# The value of SUPERADMIN_FALLBACK_CIDRS in .env must be valid JSON. This is valid
+# ex: export SUPERADMIN_FALLBACK_CIDRS='["203.0.113.10/32"]'
+superadmin_fallback_cidrs: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'SUPERADMIN_FALLBACK_CIDRS',
+      default='[]'
+    ) | from_json
+  }}
+
+# Internal DNS push is initially disabled.
+#
+# First verify routing by IP. Enable this after
+# VPN -> VM network access is known to work.
+openvpn_push_dns: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'OPENVPN_PUSH_DNS',
+      default='false'
+    ) | bool
+  }}
+
+# No VPN clients are implicitly created.
+openvpn_clients: []
+
+# Firewall policy service
+# firewalld is not being configured directly. we use
+# - a script with all the rules and settings
+# - a systemd service to run the script on boot
+# the script could be run manually to apply the rules without rebooting.
+firewall_policy_service_name: >-
+  {{
+    lookup(
+      'ansible.builtin.env',
+      'FIREWALL_POLICY_SERVICE_NAME',
+      default=undef('firwalld-init')
+    )
+  }}
+...

@@ -1,0 +1,13 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  become: true
+
+- name: Apply firewall policy
+  ansible.builtin.command:
+    argv:
+      - "/etc/{{ firewall_policy_service_name }}.sh"
+  become: true
+  changed_when: true
+...

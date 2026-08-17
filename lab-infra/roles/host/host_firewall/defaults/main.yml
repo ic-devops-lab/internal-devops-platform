@@ -1,0 +1,52 @@
+---
+host_firewall_public_zone: public
+host_firewall_vpn_zone: vpn
+host_firewall_lab_zone: lab
+host_firewall_admin_zone: admin-fallback
+host_firewall_vpn_to_lab_policy: vpn-to-lab
+
+# If enabled, VPN client traffic routed to the lab network is SNATed to the
+# host's lab-side address, so lab VMs do not need an explicit route back to
+# the OpenVPN subnet.
+host_firewall_vpn_to_lab_masquerade: true
+
+# Firewalld expects ports in the form <port>/<protocol>.
+openvpn_firewall_port: "{{ openvpn_port }}/{{ openvpn_protocol }}"
+
+host_firewall_public_services:
+  - http
+  - https
+
+host_firewall_public_ports:
+  - "{{ openvpn_firewall_port }}"
+
+host_firewall_vpn_services:
+  - ssh
+  - http
+  - https
+
+host_firewall_vpn_ports:
+  - "{{ openvpn_firewall_port }}"
+
+# Allow VPN clients to ping host/private resources through the VPN zone.
+host_firewall_vpn_allow_icmp: true
+
+# Source-based fallback zone is evaluated before interface zones.
+# Keep OpenVPN handshake reachable for trusted fallback source CIDRs.
+host_firewall_admin_fallback_ports:
+  - "{{ openvpn_firewall_port }}"
+
+# Services running on the physical host that must be reachable from VMs.
+# Keep empty unless such services are introduced.
+host_firewall_lab_services: []
+
+host_firewall_lab_ports: []
+
+host_firewall_restricted_tcp_ports:
+  - 5432
+  - 3306
+  - 6379
+  - 27017
+  - 9200
+  - 9300
+...

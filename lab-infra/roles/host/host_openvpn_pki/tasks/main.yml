@@ -1,0 +1,182 @@
+---
+- name: Install Easy-RSA
+  ansible.builtin.apt:
+    name: easy-rsa
+    state: present
+    update_cache: true
+  become: true
+
+# ------------------------------------------------------------
+# Detect current PKI state
+# ------------------------------------------------------------
+
+- name: Check Easy-RSA working directory
+  ansible.builtin.stat:
+    path: "{{ openvpn_ca_dir }}"
+  register: openvpn_ca_dir_state
+
+- name: Check PKI directory
+  ansible.builtin.stat:
+    path: "{{ openvpn_pki_dir }}"
+  register: openvpn_pki_state
+
+# ------------------------------------------------------------
+# Create Easy-RSA working directory when absent
+# ------------------------------------------------------------
+- name: Create Easy-RSA working directory
+  ansible.builtin.command:
+    cmd: "make-cadir {{ openvpn_ca_dir }}"
+  when: not openvpn_ca_dir_state.stat.exists
+  become: false
+
+- name: Check CA certificate
+  ansible.builtin.stat:
+    path: "{{ openvpn_ca_cert }}"
+  register: openvpn_ca_cert_state
+
+- name: Check CA private key
+  ansible.builtin.stat:
+    path: "{{ openvpn_ca_key }}"
+  register: openvpn_ca_key_state
+
+# ------------------------------------------------------------
+# Initialize PKI if necessary
+# ------------------------------------------------------------
+
+- name: Initialize Easy-RSA PKI
+  ansible.builtin.command:
+    cmd: "{{ openvpn_easyrsa_binary }} init-pki"
+    chdir: "{{ openvpn_ca_dir }}"
+  when: not openvpn_pki_state.stat.exists
+
+# ------------------------------------------------------------
+# Detect inconsistent existing CA
+# ------------------------------------------------------------
+
+- name: Fail if CA certificate exists but CA private key is missing
+  ansible.builtin.assert:
+    # if the CA cert does not exist → not ... is true → the whole check passes
+    # if the CA cert exists and the CA key exists → false or true → passes
+    # if the CA cert exists and the CA key is missing → false or false → fails
+    that:
+      - not openvpn_ca_cert_state.stat.exists or openvpn_ca_key_state.stat.exists
+    fail_msg: >-
+      Existing OpenVPN CA certificate was found, but its private key
+      is missing. Existing clients have been preserved, but new
+      certificates cannot safely be issued. Restore the original
+      CA private key before continuing.
+
+# ------------------------------------------------------------
+# Create CA only when no CA exists
+# ------------------------------------------------------------
+
+- name: Create OpenVPN CA
+  ansible.builtin.command:
+    cmd: "{{ openvpn_easyrsa_binary }} build-ca nopass"
+    chdir: "{{ openvpn_ca_dir }}"
+  environment:
+    EASYRSA_BATCH: "1"
+  when: not openvpn_ca_cert_state.stat.exists
+
+# ------------------------------------------------------------
+# Re-read CA state after potential creation
+# ------------------------------------------------------------
+
+- name: Recheck CA private key
+  ansible.builtin.stat:
+    path: "{{ openvpn_ca_key }}"
+  register: openvpn_ca_key_state_after
+
+- name: Assert CA is ready for issuing  certificates
+  ansible.builtin.assert:
+    that:
+      - openvpn_ca_key_state_after.stat.exists
+    fail_msg: "OpenVPN CA private key is unavailable."
+
+# ------------------------------------------------------------
+# Server key/certificate
+# ------------------------------------------------------------
+
+- name: Check server certificate
+  ansible.builtin.stat:
+    path: "{{ openvpn_server_cert }}"
+  register: openvpn_server_cert_state
+
+- name: Check server private key
+  ansible.builtin.stat:
+    path: "{{ openvpn_server_key }}"
+  register: openvpn_server_key_state
+
+- name: Generate OpenVPN server request
+  ansible.builtin.command:
+    cmd: "{{ openvpn_easyrsa_binary }} gen-req server nopass"
+    chdir: "{{ openvpn_ca_dir }}"
+  environment:
+    EASYRSA_BATCH: "1"
+  when:
+    - not openvpn_server_key_state.stat.exists
+
+- name: Sign OpenVpN server certificate
+  ansible.builtin.command:
+    cmd: "{{ openvpn_easyrsa_binary }} sign-req server server"
+    chdir: "{{ openvpn_ca_dir }}"
+  environment:
+    EASYRSA_BATCH: "1"
+  when:
+    - not openvpn_server_cert_state.stat.exists
+
+# ------------------------------------------------------------
+# DH parameters
+# ------------------------------------------------------------
+
+- name: Check DH parameters
+  ansible.builtin.stat:
+    path: "{{ openvpn_dh_file }}"
+  register: openvpn_dh_state
+
+- name: Generate DH parameters
+  ansible.builtin.command:
+    cmd: "{{ openvpn_easyrsa_binary }} gen-dh"
+    chdir: "{{ openvpn_ca_dir }}"
+  environment:
+    EASYRSA_BATCH: "1"
+  when:
+    - not openvpn_dh_state.stat.exists
+
+# ------------------------------------------------------------
+# tls-crypt key
+# ------------------------------------------------------------
+
+- name: Check tls-crypt key
+  ansible.builtin.stat:
+    path: "{{ openvpn_ta_key }}"
+  register: openvpn_ta_state
+
+- name: Generate tls-crypt key
+  ansible.builtin.command:
+    cmd: "openvpn --genkey secret {{ openvpn_ta_key }}"
+  when: not openvpn_ta_state.stat.exists
+
+# ------------------------------------------------------------
+# Final validation
+# ------------------------------------------------------------
+
+- name: Verify PKI assets required by the server
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ openvpn_ca_cert }}"
+    - "{{ openvpn_ca_key }}"
+    - "{{ openvpn_server_cert }}"
+    - "{{ openvpn_server_key }}"
+    - "{{ openvpn_dh_file }}"
+    - "{{ openvpn_ta_key }}"
+  register: openvpn_required_pki
+
+- name: Assert OpenVPN server PKI is complete
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "Required OpenVPN PKI file {{ item.item }} is missing."
+  loop: "{{ openvpn_required_pki.results }}"
+...

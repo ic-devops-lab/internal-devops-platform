@@ -1,0 +1,17 @@
+---
+- name: Configure OpenVPN infrastructure
+  hosts: localhost
+  roles:
+    - role: host_openvpn_pki
+      tags:
+        - openvpn
+        - pki
+
+    - role: host_openvpn
+      tags:
+        - openvpn
+
+    - role: host_firewall
+      tags:
+        - firewall
+...

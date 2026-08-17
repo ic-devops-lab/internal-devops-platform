@@ -1,0 +1,123 @@
+---
+# ------------------------------------------------------------
+# Safety checks
+# ------------------------------------------------------------
+
+- name: Validate required interface variables
+  ansible.builtin.assert:
+    that:
+      - openvpn_public_interface | length > 0
+      - openvpn_tunnel_interface | length > 0
+      - lab_interface | length > 0
+      - openvpn_public_interface != openvpn_tunnel_interface
+      - openvpn_public_interface != lab_interface
+      - openvpn_tunnel_interface != lab_interface
+    fail_msg: >-
+      Public, VPN, and lab interfaces must be defined and must be
+      different interfaces.
+
+- name: Validate fallback administrator configuration
+  ansible.builtin.assert:
+    that:
+      - not superadmin_fallback_enabled
+        or superadmin_fallback_cidrs | length > 0
+      - "'0.0.0.0/0' not in superadmin_fallback_cidrs"
+      - "'::/0' not in superadmin_fallback_cidrs"
+    fail_msg: >-
+      When fallback access is enabled, at least one restricted source CIDR
+      must be configured. Unrestricted networks such as 0.0.0.0/0 and ::/0
+      are forbidden.
+
+- name: Validate OpenVPN subnet
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        import ipaddress, sys;
+        network = ipaddress.ip_network(sys.argv[1], strict=True);
+        assert network.version == 4
+      - "{{ openvpn_subnet }}"
+  changed_when: false
+
+- name: Validate lab subnet
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        import ipaddress, sys;
+        network = ipaddress.ip_network(sys.argv[1], strict=True);
+        assert network.version == 4
+      - "{{ lab_subnet }}"
+  changed_when: false
+
+- name: Validate superadmin fallback CIDRs
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        import ipaddress, sys;
+        network = ipaddress.ip_network(sys.argv[1], strict=False);
+        assert network.version == 4;
+        assert network.prefixlen >= 24
+      - "{{ item }}"
+  loop: "{{ superadmin_fallback_cidrs }}"
+  changed_when: false
+  when: superadmin_fallback_enabled
+
+# The /24 minimum in the assertion above means that /24, /25, … /32 are accepted,
+# while broad networks such as /8 or /16 are rejected.
+# For normal use, administrator addresses should be /32
+
+# ------------------------------------------------------------
+# Firewalld installation and configuration
+# ------------------------------------------------------------
+
+- name: Install firewalld
+  ansible.builtin.apt:
+    name:
+      - firewalld
+      - python3-firewall
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Ensure firewalld is enabled and running
+  ansible.builtin.service:
+    name: firewalld
+    state: started
+    enabled: true
+  become: true
+
+- name: Install firewall policy script
+  ansible.builtin.template:
+    src: firewalld-init.sh.j2
+    dest: "/etc/{{ firewall_policy_service_name }}.sh"
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+  notify: Apply firewall policy
+
+- name: Install firewall policy systemd service
+  ansible.builtin.template:
+    src: firewalld-init.service.j2
+    dest: "/etc/systemd/system/{{ firewall_policy_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Apply firewall policy
+
+- name: Flush handlers before enabling firewall policy service
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable firewall policy service
+  ansible.builtin.systemd_service:
+    name: "{{ firewall_policy_service_name }}.service"
+    enabled: true
+...

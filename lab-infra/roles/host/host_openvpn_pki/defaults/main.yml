@@ -1,0 +1,11 @@
+---
+openvpn_easyrsa_binary: "{{ openvpn_ca_dir }}/easyrsa"
+
+openvpn_ca_cert: "{{ openvpn_pki_dir }}/ca.crt"
+openvpn_ca_key: "{{ openvpn_pki_dir }}/private/ca.key"
+
+openvpn_server_cert: "{{ openvpn_pki_dir }}/issued/server.crt"
+openvpn_server_key: "{{ openvpn_pki_dir }}/private/server.key"
+
+openvpn_dh_file: "{{ openvpn_pki_dir }}/dh.pem"
+...
