@@ -107,7 +107,7 @@ firewall_policy_service_name: >-
     lookup(
       'ansible.builtin.env',
       'FIREWALL_POLICY_SERVICE_NAME',
-      default=undef('firwalld-init')
+      default='firewalld-init'
     )
   }}
 ...
