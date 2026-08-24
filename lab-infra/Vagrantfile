@@ -46,6 +46,76 @@ Vagrant.configure("2") do |config|
     },
   }
 
+  # Optional external node files to reduce merge conflicts.
+  # Place one file per node in .nodes/ as .rb, .yml, or .yaml.
+  # If `name` is omitted, filename (without extension) is used as node name.
+  #
+  # Ruby file example (.nodes/new_node.rb):
+  # {
+  #   ip: "192.168.56.22",
+  #   box_name: box_name_debian,
+  #   cpus: 1,
+  #   memory: 512,
+  #   disksize: 10,
+  #   group: "test"
+  # }
+  #
+  # YAML file example (.nodes/new_node.yaml):
+  # ip: 192.168.56.22
+  # box_name: box_name_debian
+  # cpus: 1
+  # memory: 512
+  # disksize: 10
+  # group: test
+  nodes_dir = File.join(__dir__, "_nodes")
+  box_aliases = {
+    "box_name_debian" => box_name_debian,
+    "box_name_ubuntu" => box_name_ubuntu,
+    "debian" => box_name_debian,
+    "ubuntu" => box_name_ubuntu,
+  }
+
+  if Dir.exist?(nodes_dir)
+    require "yaml"
+
+    Dir.glob(File.join(nodes_dir, "*.{rb,yml,yaml}")).sort.each do |node_file|
+      ext = File.extname(node_file)
+
+      raw_node = case ext
+                 when ".rb"
+                   # Evaluate in current binding so box_name_debian/box_name_ubuntu can be used.
+                   eval(File.read(node_file), binding, node_file)
+                 when ".yml", ".yaml"
+                   YAML.safe_load(File.read(node_file), aliases: false) || {}
+                 else
+                   {}
+                 end
+
+      unless raw_node.is_a?(Hash)
+        raise "Node file #{node_file} must return a Hash"
+      end
+
+      node_name = (raw_node[:name] || raw_node["name"] || File.basename(node_file, ext)).to_s
+      node_cfg = {}
+      raw_node.each do |k, v|
+        node_cfg[k.to_sym] = v
+      end
+      node_cfg.delete(:name)
+
+      if node_cfg[:box_name].is_a?(String) && box_aliases.key?(node_cfg[:box_name])
+        node_cfg[:box_name] = box_aliases[node_cfg[:box_name]]
+      end
+
+      required_keys = %i[ip box_name cpus memory disksize group]
+      missing = required_keys.select { |k| !node_cfg.key?(k) }
+      unless missing.empty?
+        raise "Node file #{node_file} is missing required keys: #{missing.join(", ")}"
+      end
+
+      nodes[node_name] = node_cfg
+    end
+  end
+
   nodes.each do |name, cfg|
     config.vm.define name do |node|
       node.vm.box = cfg[:box_name]

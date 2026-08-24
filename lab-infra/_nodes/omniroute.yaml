@@ -1,0 +1,6 @@
+  ip: 192.168.56.21
+  box_name: box_name_debian
+  cpus: 1
+  memory: 2048
+  disksize: 10
+  group: ai
