@@ -16,3 +16,6 @@ dns_records:
 
   - name: k3s01-wrk02
     ip: 192.168.56.13
+
+  - name: omniroute
+    ip: 192.168.56.21
