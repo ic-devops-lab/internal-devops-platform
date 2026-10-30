@@ -1,0 +1,24 @@
+---
+- name: Wait for Jenkins HTTP endpoint
+  ansible.builtin.uri:
+    url: "http://{{ jenkins_listen_address }}:{{ jenkins_http_port }}"
+    method: GET
+    status_code:
+      - 200
+      - 403
+    follow_redirects: safe
+    use_proxy: false
+    return_content: false
+  register: jenkins_http_response
+  retries: 20
+  delay: 5
+  until:
+    - jenkins_http_response.status | default(0) in [200, 403]
+    - jenkins_http_response.x_jenkins | default('') | length > 0
+
+- name: Display Jenkins version
+  ansible.builtin.debug:
+    msg: >-
+      Jenkins {{ jenkins_http_response.x_jenkins | default('unknown') }}
+      is running at http://{{ jenkins_listen_address }}:{{ jenkins_http_port }}
+...

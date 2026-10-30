@@ -1,4 +1,6 @@
 ---
+debug_mode: true
+
 common_packages:
   - ca-certificates
   - curl
@@ -47,4 +49,19 @@ lab_interface: >-
 
 # Host address on the VirtualBox host-only network.
 lab_gateway: "192.168.56.1"
+
+# -------------------------------------------------------------------------
+# ---                       MetalLB Configuration                       ---
+# -------------------------------------------------------------------------
+metallb_address_pool_name: private-pool
+
+# A small range is more flexible, while a `/32` makes accidental
+# allocation impossible outside the ingress VIP.
+metallb_address_pool:
+  - "192.168.56.20/32"
+
+k3s_platform_ingress_ip: "192.168.56.20"
+k3s_platform_apps_domain: "apps.lab.internal"
+
+# ---                    End of MetalLB Configuration                   ---
 ...

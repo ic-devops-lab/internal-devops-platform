@@ -1,0 +1,133 @@
+---
+- name: Configure Jenkins firewall
+  when: jenkins_firewall_enabled | bool
+  block:
+    - name: Install firewalld and NetworkManager Python bindings
+      ansible.builtin.dnf:
+        name:
+          - firewalld
+          - python3-firewall
+          - NetworkManager
+        state: present
+
+    # Here could be additional check for other firewalls running on the system
+    # and disabling them if necessary
+    # Not crucial for now as we use RockyLinux with firewalld as the default firewall
+
+    - name: Ensure firewalld is enabled and running
+      ansible.builtin.systemd_service:
+        name: firewalld
+        enabled: true
+        state: started
+
+    - name: Create lab firewall zone
+      ansible.posix.firewalld:
+        zone: "{{ jenkins_firewall_zone }}"
+        state: present
+        permanent: true
+      register: jenkins_firewall_zone_result
+
+    - name: Reload firewalld after zone creating
+      when: jenkins_firewall_zone_result.changed
+      ansible.builtin.command:
+        cmd: firewall-cmd --reload
+      changed_when: true
+
+    - name: Allow services in Jenkins lab zone
+      ansible.posix.firewalld:
+        zone: "{{ jenkins_firewall_zone }}"
+        service: "{{ item }}"
+        state: enabled
+        permanent: true
+        immediate: true
+      loop: "{{ jenkins_firewall_services }}"
+
+    - name: Allow Jenkins zone ports
+      ansible.posix.firewalld:
+        zone: "{{ jenkins_firewall_zone }}"
+        port: "{{ item }}"
+        state: enabled
+        permanent: true
+        immediate: true
+      loop: "{{ jenkins_firewall_ports }}"
+
+    - name: Get NetworkManager connection for Jenkins interface
+      ansible.builtin.command:
+        argv:
+          - nmcli
+          - -g
+          - GENERAL.CONNECTION
+          - device
+          - show
+          - "{{ jenkins_listen_interface }}"
+      register: jenkins_nm_connection
+      changed_when: false
+
+    - name: Validate NetworkManager connection
+      ansible.builtin.assert:
+        that:
+          - jenkins_nm_connection.stdout | trim | length > 0
+          - jenkins_nm_connection.stdout | trim != '--'
+        fail_msg: >-
+          No active NetworkManager connection for
+          {{ jenkins_listen_interface }}.
+
+    - name: Read current firewall zone for NetworkManager connection
+      ansible.builtin.command:
+        argv:
+          - nmcli
+          - -g
+          - connection.zone
+          - connection
+          - show
+          - "{{ jenkins_nm_connection.stdout | trim }}"
+      register: jenkins_nm_current_zone
+      changed_when: false
+
+    - name: Assign Jenkins interface connection to lab zone
+      ansible.builtin.command:
+        argv:
+          - nmcli
+          - connection
+          - modify
+          - "{{ jenkins_nm_connection.stdout | trim }}"
+          - connection.zone
+          - "{{ jenkins_firewall_zone }}"
+      when: jenkins_nm_current_zone.stdout | trim != jenkins_firewall_zone
+      changed_when: true
+
+    - name: Read active firewall zone for Jenkins interface
+      ansible.builtin.command:
+        argv:
+          - firewall-cmd
+          - --get-zone-of-interface={{ jenkins_listen_interface }}
+      register: jenkins_firewall_active_zone
+      changed_when: false
+
+    - name: Apply firewall zone active Jenkins interface
+      ansible.builtin.command:
+        argv:
+          - firewall-cmd
+          - --zone={{ jenkins_firewall_zone }}
+          - --change-interface={{ jenkins_listen_interface }}
+      when: jenkins_firewall_active_zone.stdout | trim != jenkins_firewall_zone
+      changed_when: true
+
+    - name: Verify Jenkins interface firewall zone
+      ansible.builtin.command:
+        argv:
+          - firewall-cmd
+          - --get-zone-of-interface={{ jenkins_listen_interface }}
+      register: jenkins_firewall_interface_zone
+      changed_when: false
+
+    - name: Assert Jenkins interface uses expected firewall zone
+      ansible.builtin.assert:
+        that:
+          - jenkins_firewall_interface_zone.stdout | trim == jenkins_firewall_zone
+        fail_msg: >-
+          Interface {{ jenkins_listen_interface }} is not assigned
+          to firewall zone {{ jenkins_firewall_zone }}.
+
+
+...

@@ -30,4 +30,9 @@ all:
                 k3s01-wrk02:
                   ansible_host: 192.168.56.13
                   ansible_ssh_private_key_file: .vagrant/machines/k3s01-wrk02/virtualbox/private_key
+        jenkins:
+          hosts:
+            jenkins01:
+              ansible_host: 192.168.56.23
+              ansible_ssh_private_key_file: .vagrant/machines/jenkins01/virtualbox/private_key
 ...

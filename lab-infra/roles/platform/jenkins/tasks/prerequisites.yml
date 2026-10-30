@@ -1,0 +1,12 @@
+---
+- name: Install Jenkins Prerequisites
+  ansible.builtin.dnf:
+    name:
+      - "java-{{ jenkins_java_version }}"
+      - fontconfig
+      - git
+      - curl
+      - wget
+    state: present
+    update_cache: true
+...

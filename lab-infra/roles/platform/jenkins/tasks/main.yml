@@ -1,0 +1,50 @@
+---
+- name: Validate Jenkins network interface
+  ansible.builtin.assert:
+    that:
+      - jenkins_listen_interface in ansible_facts
+      - ansible_facts[jenkins_listen_interface]['ipv4'] is defined
+      - ansible_facts[jenkins_listen_interface]['ipv4']['address'] is defined
+    fail_msg: >-
+      Interface {{ jenkins_listen_interface }} is missing or does not have a valid IPv4 address
+
+- name: Resolve Jenkins listen address
+  ansible.builtin.set_fact:
+    jenkins_listen_address: >-
+      {{ ansible_facts[jenkins_listen_interface]['ipv4']['address'] }}
+
+- name: Display resolved Jenkins listen address
+  ansible.builtin.debug:
+    msg: >-
+      Jenkins will listen on {{ jenkins_listen_address }}:{{ jenkins_http_port }}
+
+- name: Install Jenkins prerequisites
+  ansible.builtin.import_tasks: prerequisites.yml
+
+- name: Configure Jenkins repository
+  ansible.builtin.import_tasks: repository.yml
+
+- name: Install Jenkins
+  ansible.builtin.import_tasks: install.yml
+
+- name: Configure Jenkins systemd service
+  ansible.builtin.import_tasks: systemd.yml
+
+- name: Configure Jenkins firewall
+  ansible.builtin.import_tasks: firewall.yml
+
+- name: Apply Jenkins configuration changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Jenkins is running
+  ansible.builtin.systemd_service:
+    name: jenkins
+    state: started
+    enabled: true
+
+- name: Install Jenkins plugins
+  ansible.builtin.import_tasks: plugins.yml
+
+- name: Validate Jenkins installation
+  ansible.builtin.import_tasks: validate.yml
+...

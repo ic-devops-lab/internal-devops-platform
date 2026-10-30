@@ -1,0 +1,126 @@
+---
+- name: Create Jenkins plugin management directory
+  ansible.builtin.file:
+    path: /opt/jenkins
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Download Jenkins Plugin Installation Manager
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/{{ jenkins_plugin_manager_version }}/jenkins-plugin-manager-{{ jenkins_plugin_manager_version }}.jar
+    dest: "{{ jenkins_plugin_manager_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Generate Jenkins plugin manifest
+  ansible.builtin.template:
+    src: plugins.txt.j2
+    dest: /opt/jenkins/plugins.txt
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Ensure Jenkins plugin directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_plugin_directory }}"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: '0755'
+
+# The checksum detects changes to the requested plugin list
+- name: Calculate plugin manifest checksum
+  ansible.builtin.stat:
+    path: "{{ jenkins_plugin_manifest_path }}"
+    checksum_algorithm: sha256
+  register: jenkins_plugin_manifest_stat
+
+- name: Display plugin manifest checksum (Debug)
+  when: debug_mode | bool
+  ansible.builtin.debug:
+    msg: >-
+      Plugin manifest checksum value: {{ jenkins_plugin_manifest_stat.stat.checksum | default('N/A') }}
+
+- name: Read previously applied plugin manifest checksum
+  ansible.builtin.slurp:
+    path: "{{ jenkins_plugin_state_path }}"
+  register: jenkins_plugin_state
+  failed_when: false
+
+- name: Calculate plugin manifest change
+  ansible.builtin.set_fact:
+    jenkins_plugin_manifest_changed: >-
+      {{
+        (jenkins_plugin_state.content | default('') | b64decode | trim)
+        != jenkins_plugin_manifest_stat.stat.checksum
+      }}
+
+# The archive checks detect requested plugins that are missing from the installation
+- name: Check requested plugin archives
+  ansible.builtin.stat:
+    path: "{{ jenkins_plugin_directory }}/{{ item }}.jpi"
+  loop: "{{ jenkins_plugins }}"
+  register: jenkins_plugin_archive_checks
+
+- name: Determine whether plugin installation is required
+  ansible.builtin.set_fact:
+    jenkins_plugins_install_required: >-
+      {{
+        jenkins_plugin_manifest_changed | bool
+        or
+        (
+          jenkins_plugin_archive_checks.results
+          | selectattr('stat.exists', 'equalto', false)
+          | list
+          | length > 0
+        )
+      }}
+
+- name: Display plugin installation decision
+  ansible.builtin.debug:
+    msg: >-
+      Plugin installation required: {{ jenkins_plugins_install_required }}
+
+- name: Install Jenkins plugins when required
+  when: jenkins_plugins_install_required | bool
+  block:
+    - name: Stop Jenkins for plugin installation
+      ansible.builtin.systemd_service:
+        name: jenkins
+        state: stopped
+
+    - name: Install Jenkins plugins and dependencies
+      ansible.builtin.command:
+        argv:
+          - java
+          - -jar
+          - "{{ jenkins_plugin_manager_path }}"
+          - --war
+          - /usr/share/java/jenkins.war
+          - --plugin-file
+          - "{{ jenkins_plugin_manifest_path }}"
+          - --plugin-download-directory
+          - "{{ jenkins_plugin_directory }}"
+      become: true
+      become_user: jenkins
+      register: jenkins_plugin_install_result
+      changed_when: true
+
+    - name: Record applied plugin manifest checksum
+      ansible.builtin.copy:
+        content: "{{ jenkins_plugin_manifest_stat.stat.checksum }}\n"
+        dest: "{{ jenkins_plugin_state_path }}"
+        owner: jenkins
+        group: jenkins
+        mode: "0644"
+
+  always:
+    - name: Ensure Jenkins is running after plugin installation
+      ansible.builtin.systemd_service:
+        name: jenkins
+        state: started
+...

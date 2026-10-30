@@ -19,3 +19,9 @@ dns_records:
 
   - name: omniroute
     ip: 192.168.56.21
+
+  - name: jenkins
+    ip: 192.168.56.22
+
+  - name: sonarqube
+    ip: 192.168.56.23

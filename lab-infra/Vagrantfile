@@ -1,7 +1,10 @@
 Vagrant.configure("2") do |config|
+  box_name_centos = "generic/centos9s" # CentOS Stream 9
+  box_name_rocky = "rocky9-official"
   box_name_debian = "debian/bookworm64" # Debian 12
   # box_name_debian = "debian/bullseye64" # Debian 11
-  box_name_ubuntu = "ubuntu/jammy64" # Ubuntu 22.04
+  # box_name_ubuntu = "ubuntu/jammy64" # Ubuntu 22.04
+  box_name_ubuntu = "bento/ubuntu-22.04" # Ubuntu 22.04
 
   nodes = {
     "dns01" => {
@@ -69,10 +72,14 @@ Vagrant.configure("2") do |config|
   # group: test
   nodes_dir = File.join(__dir__, "_nodes")
   box_aliases = {
+    "box_name_centos" => box_name_centos,
     "box_name_debian" => box_name_debian,
     "box_name_ubuntu" => box_name_ubuntu,
+    "box_name_rocky" => box_name_rocky,
+    "centos" => box_name_centos,
     "debian" => box_name_debian,
     "ubuntu" => box_name_ubuntu,
+    "rocky" => box_name_rocky,
   }
 
   if Dir.exist?(nodes_dir)

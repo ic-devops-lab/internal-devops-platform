@@ -1,0 +1,39 @@
+---
+# Jenkins Controller config
+jenkins_version: "2.580.2"
+jenkins_java_version: "25"
+
+jenkins_listen_interface: eth1
+jenkins_http_port: 8080
+jenkins_startup_timeout: 300
+
+# Firewall for Jenkins Controller config
+jenkins_firewall_enabled: true
+jenkins_firewall_zone: lab
+jenkins_firewall_services:
+  - ssh
+
+jenkins_firewall_ports:
+  - "{{ jenkins_http_port }}/tcp"
+
+# Jenkins Plugin Manager config
+jenkins_plugin_manager_version: "2.15.0"
+jenkins_plugin_manager_path: /opt/jenkins/plugin-manager.jar
+jenkins_plugin_directory: /var/lib/jenkins/plugins
+jenkins_plugin_manifest_path: /opt/jenkins/plugins.txt
+jenkins_plugin_state_path: /var/lib/jenkins/.ansible-plugin-manifest.sha256
+
+jenkins_plugins:
+  - workflow-aggregator
+  - git
+  - credentials
+  - credentials-binding
+  - kubernetes
+  - pipeline-graph-view
+  - timestamper
+  - warnings-ng
+  - junit
+  - ws-cleanup
+  - configuration-as-code
+  - job-dsl
+...
