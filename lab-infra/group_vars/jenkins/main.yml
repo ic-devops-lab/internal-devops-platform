@@ -36,4 +36,24 @@ jenkins_plugins:
   - ws-cleanup
   - configuration-as-code
   - job-dsl
+
+# ---------- Jenkins Configuration as Code START ----------
+jenkins_casc_enabled: true
+
+# Jenkins controller
+jenkins_url: "http://jenkins-test.lab.internal:8080"
+
+# Kubernetes cloud
+jenkins_k8s_cloud_name: "k3s"
+jenkins_k8s_server_url: "https://192.168.56.11:6443"
+jenkins_k8s_namespace: "default"
+jenkins_k8s_credentials_id: "k3s-kubeconfig"
+jenkins_k8s_container_cap: 10
+
+# Kubernetes agent
+jenkins_k8s_agent_name: "jenkins-k8s-agent"
+jenkins_k8s_agent_label: "k8s-agent"
+jenkins_k8s_agent_image: "iucovaliov/jenkins-cpp-agent:1.0"
+jenkins_k8s_agent_workdir: "/home/jenkins/agent"
+# ---------- Jenkins Configuration as Code END ----------
 ...

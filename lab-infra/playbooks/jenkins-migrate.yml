@@ -1,0 +1,194 @@
+---
+# Usage:
+#   ansible-playbook playbooks/jenkins-migrate.yml
+#   ansible-playbook playbooks/jenkins-migrate.yml \
+#     -e jenkins_migrate_restore=true
+
+
+# Collect Jenkins configuration from old controller
+# - Read the old controller.
+# - Copy its job definitions into .migration/jobs/.
+# - Create .migration/plugins.txt.
+- name: Collect Jenkins configuration from old controller
+  hosts: jenkins_old
+  become: true
+  gather_facts: false
+
+  vars:
+    jenkins_home: /var/lib/jenkins
+    migration_dir: "{{ (playbook_dir ~ '/../.migration') | realpath }}"
+
+  tasks:
+    - name: Find Jenkins job configurations
+      ansible.builtin.find:
+        paths: "{{ jenkins_home }}/jobs"
+        patterns: config.xml
+        recurse: true
+        file_type: file
+      register: old_jenkins_jobs
+
+    - name: Display discovered jobs
+      ansible.builtin.debug:
+        msg: >-
+          Found {{ old_jenkins_jobs.files | length }}
+          job/folder configuration files
+
+    - name: Fetch Jenkins job configurations
+      ansible.builtin.fetch:
+        src: "{{ item.path }}"
+        dest: >-
+          {{ migration_dir }}/jobs/{{
+            item.path | regex_replace('^' ~ jenkins_home ~ '/jobs/', '')
+          }}
+        flat: true
+      loop: "{{ old_jenkins_jobs.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+      no_log: true
+
+    - name: Collect installed plugin archive names
+      ansible.builtin.shell: |
+        find "{{ jenkins_home }}/plugins" \
+          -maxdepth 1 -type f \
+          \( -name '*.jpi' -o -name '*.hpi' \) \
+          -printf '%f\n' | sort
+      args:
+        executable: /bin/bash
+      register: old_jenkins_plugins
+      changed_when: false
+
+    - name: Save plugin inventory locally
+      ansible.builtin.copy:
+        content: "{{ old_jenkins_plugins.stdout }}\n"
+        dest: "{{ migration_dir }}/plugins.txt"
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+
+    - name: Display migration inventory summary
+      ansible.builtin.debug:
+        msg:
+          - "Job/folder configurations: {{ old_jenkins_jobs.files | length }}"
+          - "Plugin archives: {{ old_jenkins_plugins.stdout_lines | length }}"
+          - "Local migration directory: {{ migration_dir }}"
+
+
+- name: Restore Jenkins jobs to new controller
+  hosts: jenkins
+  become: true
+  gather_facts: false
+
+  vars:
+    jenkins_home: /var/lib/jenkins
+    migration_dir: "{{ (playbook_dir ~ '/../.migration') | realpath }}"
+    jenkins_migrate_restore: false
+
+  tasks:
+    - name: Restore job definitions
+      when: jenkins_migrate_restore | bool
+      block:
+        - name: Find collected job configurations
+          ansible.builtin.find:
+            paths: "{{ migration_dir }}/jobs"
+            patterns: config.xml
+            recurse: true
+          delegate_to: localhost
+          become: false
+          register: migration_job_files
+
+        - name: Check whether jobs already exist
+          ansible.builtin.stat:
+            path: >-
+              {{ jenkins_home }}/jobs/{{
+                item.path | replace(migration_dir ~ '/jobs/', '')
+              }}
+          loop: "{{ migration_job_files.files }}"
+          loop_control:
+            label: "{{ item.path }}"
+          register: migration_target_checks
+
+        - name: Create missing job directories
+          ansible.builtin.file:
+            path: >-
+              {{ jenkins_home }}/jobs/{{
+                item.item.path
+                | replace(migration_dir ~ '/jobs/', '')
+                | dirname
+              }}
+            state: directory
+            owner: jenkins
+            group: jenkins
+            mode: "0755"
+          loop: "{{ migration_target_checks.results }}"
+          loop_control:
+            label: "{{ item.item.path }}"
+          when: not item.stat.exists
+
+        - name: Copy missing job configurations
+          ansible.builtin.copy:
+            src: "{{ item.item.path }}"
+            dest: >-
+              {{ jenkins_home }}/jobs/{{
+                item.item.path
+                | replace(migration_dir ~ '/jobs/', '')
+              }}
+            owner: jenkins
+            group: jenkins
+            mode: "0644"
+            force: false
+          loop: "{{ migration_target_checks.results }}"
+          loop_control:
+            label: "{{ item.item.path }}"
+          when: not item.stat.exists
+          notify: Restart new Jenkins controller
+          no_log: true
+
+- name: Migrate Jenkins global settings
+  hosts: jenkins
+  become: true
+  gather_facts: false
+
+  vars:
+    migration_dir: "{{ (playbook_dir ~ '/../.migration') | realpath }}"
+
+  tasks:
+    - name: Create JCasC directory
+      ansible.builtin.file:
+        path: /etc/jenkins/casc
+        state: directory
+        owner: root
+        group: jenkins
+        mode: "0750"
+
+    - name: Copy migrated configuration
+      ansible.builtin.copy:
+        src: "{{ migration_dir }}/jenkins-settings.yaml"
+        dest: /etc/jenkins/casc/jenkins-settings.yaml
+        owner: root
+        group: jenkins
+        mode: "0640"
+      notify: Restart new Jenkins controller
+
+    - name: Configure JCasC in systemd
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/jenkins.service.d/20-casc.conf
+        content: |
+          [Service]
+          Environment="CASC_JENKINS_CONFIG=/etc/jenkins/casc/jenkins-settings.yaml"
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart new Jenkins controller
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Restart new Jenkins controller
+      ansible.builtin.systemd_service:
+        name: jenkins
+        state: restarted
+...

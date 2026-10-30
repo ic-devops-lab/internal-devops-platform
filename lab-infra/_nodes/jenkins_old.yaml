@@ -1,0 +1,6 @@
+ip: 192.168.56.22
+box_name: box_name_rocky
+cpus: 2
+memory: 4096
+disksize: 20
+group: jenkins
