@@ -21,7 +21,7 @@ dns_records:
     ip: 192.168.56.21
 
   - name: jenkins
-    ip: 192.168.56.22
+    ip: 192.168.56.23
 
   - name: sonarqube
-    ip: 192.168.56.23
+    ip: 192.168.56.24
